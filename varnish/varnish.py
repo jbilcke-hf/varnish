@@ -21,7 +21,8 @@ import torch.nn.functional as F
 import torchaudio
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip
 
-import .mmaudio
+from . import mmaudio
+
 from .mmaudio.eval_utils import (
     ModelConfig,
     all_model_cfg,
