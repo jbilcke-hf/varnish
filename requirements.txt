@@ -8,7 +8,7 @@ Pillow==9.5.0
 
 # Video processing
 opencv-python>=4.10.0.84
-moviepy>=1.0.3
+moviepy==1.0.3
 imageio==2.34.2
 imageio-ffmpeg==0.5.1
 scikit-video>=1.1.11
