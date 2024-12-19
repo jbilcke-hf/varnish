@@ -3,7 +3,7 @@
 
 ## Acknowledgements
 
-This project uses various open-source projects to work.
+This project uses various open-source librairies and AI models to work.
 
 All credits is due to them! Varnish is only a modest library mixing and mashing things together.
 
