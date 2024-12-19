@@ -35,7 +35,7 @@ from .mmaudio.model.networks import MMAudio, get_my_mmaudio
 from .mmaudio.model.sequence_config import SequenceConfig
 from .mmaudio.model.utils.features_utils import FeaturesUtils
 
-from utils import load_sd_upscale
+from .utils import load_sd_upscale
 from .rife_model import load_rife_model
 
 # Type definitions
