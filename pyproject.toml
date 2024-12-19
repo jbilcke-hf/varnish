@@ -72,6 +72,10 @@ Issues = "https://github.com/jbilcke-hf/varnish/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["varnish"]
 
+[tool.setuptools.packages.find]
+include = ["varnish*"]
+exclude = [".github", "example.py"]
+
 [tool.yapf]
 based_on_style = "pep8"
 indent_width = 4
