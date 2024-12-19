@@ -88,16 +88,16 @@ class VideoProcessor:
     def __init__(
         self,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        upscale_model_path: str = "model_real_esran/RealESRGAN_x4.pth",
-        rife_model_path: str = "model_rife",
         enable_mmaudio: bool = True,
         mmaudio_config: Optional[MMAudioConfig] = None,
     ):
         self.device = device
         self._models: dict[str, Any] = {}
         self.model_paths = {
-            'upscale': upscale_model_path,
-            'rife': rife_model_path
+            'upscale_x2': "model_real_esran/RealESRGAN_x2.pth",
+            'upscale_x4': "model_real_esran/RealESRGAN_x4.pth",
+            'upscale_x8': "model_real_esran/RealESRGAN_x8.pth",
+            'rife': "model_rife"
         }
         self.enable_mmaudio = enable_mmaudio
         self.mmaudio_config = mmaudio_config or MMAudioConfig()
@@ -139,7 +139,7 @@ class VideoProcessor:
     def _load_model(self, model_type: str) -> Any:
         """Lazy load models when needed"""
         if model_type not in self._models:
-            if model_type == 'upscale':
+            if model_type.startswith('upscale'):
                 from utils import load_sd_upscale
                 self._models[model_type] = load_sd_upscale(
                     self.model_paths[model_type], 
@@ -254,63 +254,57 @@ class VideoProcessor:
     async def process_frames(
         self,
         frames: torch.Tensor,
-        enable_upscale: bool = False,
+        upscale_factor: int = 0,
         enable_interpolation: bool = False,
-        target_width: Optional[int] = None,
-        target_height: Optional[int] = None,
-        target_fps: Optional[int] = None,
+        interpolation_exp: int = 1,  # Controls number of frames: 2^exp - 1 frames between each pair
+        output_fps: Optional[int] = None,
         progress_callback: Optional[callable] = None
     ) -> torch.Tensor:
         """Process video frames with optional upscaling and interpolation"""
         processed_frames = frames
 
-        if enable_upscale and (target_width is not None or target_height is not None):
-            if progress_callback:
-                progress_callback(ProcessingProgress(
-                    ProcessingStage.UPSCALING,
-                    0.0,
-                    "Starting upscaling"
-                ))
-                
-            with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
-                model = self._load_model('upscale')
-                processed_frames = utils.upscale_batch_and_concatenate(
-                    model,
-                    processed_frames,
-                    self.device
-                )
-                
-                if target_width is not None or target_height is not None:
-                    processed_frames = F.interpolate(
-                        processed_frames,
-                        size=(
-                            target_height or processed_frames.shape[2],
-                            target_width or processed_frames.shape[3]
-                        ),
-                        mode='bicubic',
-                        align_corners=False
-                    )
-                
+        if upscale_factor > 0:
+            if upscale_factor not in [1, 2, 4, 8]:
+                raise ValueError(f"Unsupported upscale factor: {upscale_factor}. Must be 0, 1, 2, 4, or 8")
+            
+            if upscale_factor > 1:  # Skip if factor is 0 or 1
                 if progress_callback:
                     progress_callback(ProcessingProgress(
                         ProcessingStage.UPSCALING,
-                        1.0,
-                        "Upscaling complete"
+                        0.0,
+                        f"Starting {upscale_factor}x upscaling"
                     ))
+                    
+                with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
+                    model_key = f'upscale_x{upscale_factor}'
+                    model = self._load_model(model_key)
+                    processed_frames = utils.upscale_batch_and_concatenate(
+                        model,
+                        processed_frames,
+                        self.device
+                    )
+                    
+                    if progress_callback:
+                        progress_callback(ProcessingProgress(
+                            ProcessingStage.UPSCALING,
+                            1.0,
+                            "Upscaling complete"
+                        ))
 
-        if enable_interpolation and target_fps is not None:
+        if enable_interpolation and interpolation_exp > 0:
             if progress_callback:
                 progress_callback(ProcessingProgress(
                     ProcessingStage.INTERPOLATION,
                     0.0,
-                    "Starting frame interpolation"
+                    f"Starting frame interpolation (2^{interpolation_exp}-1 frames)"
                 ))
                 
             with torch.cuda.stream(self.rife_stream) if self.device == "cuda" else nullcontext():
                 model = self._load_model('rife')
                 processed_frames = rife_model.rife_inference_with_latents(
                     model,
-                    processed_frames
+                    processed_frames,
+                    exp=interpolation_exp  # Pass the exponent to control frame generation
                 )
                 
                 if progress_callback:
