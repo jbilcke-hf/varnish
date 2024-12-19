@@ -1,3 +1,5 @@
+# /!\ important: dependencies are actually inside pyproject.toml
+
 # Core dependencies
 torch>=2.5.1
 torchvision>=0.16.0
