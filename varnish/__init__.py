@@ -1,4 +1,4 @@
-from varnish import (
+from .varnish import (
     OutputType,
     ProcessingStage,
     VideoMetadata,
@@ -12,7 +12,6 @@ from varnish import (
 # Importing with `from varnish import *` will only import these names
 __all__ = [
     "__version__",
-    "PipelineImageInput",
     "OutputType",
     "ProcessingStage",
     "VideoMetadata",
