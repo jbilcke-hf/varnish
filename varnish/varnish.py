@@ -21,8 +21,8 @@ import torch.nn.functional as F
 import torchaudio
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip
 
-import mmaudio
-from mmaudio.eval_utils import (
+import .mmaudio
+from .mmaudio.eval_utils import (
     ModelConfig,
     all_model_cfg,
     generate,
@@ -30,10 +30,13 @@ from mmaudio.eval_utils import (
     make_video,
     setup_eval_logging
 )
-from mmaudio.model.flow_matching import FlowMatching
-from mmaudio.model.networks import MMAudio, get_my_mmaudio
-from mmaudio.model.sequence_config import SequenceConfig
-from mmaudio.model.utils.features_utils import FeaturesUtils
+from .mmaudio.model.flow_matching import FlowMatching
+from .mmaudio.model.networks import MMAudio, get_my_mmaudio
+from .mmaudio.model.sequence_config import SequenceConfig
+from .mmaudio.model.utils.features_utils import FeaturesUtils
+
+from utils import load_sd_upscale
+from .rife_model import load_rife_model
 
 # Type definitions
 PipelineImageInput = Union[
@@ -140,13 +143,11 @@ class VideoProcessor:
         """Lazy load models when needed"""
         if model_type not in self._models:
             if model_type.startswith('upscale'):
-                from utils import load_sd_upscale
                 self._models[model_type] = load_sd_upscale(
                     self.model_paths[model_type], 
                     self.device
                 )
             elif model_type == 'rife':
-                from rife_model import load_rife_model
                 self._models[model_type] = load_rife_model(
                     self.model_paths[model_type]
                 )
