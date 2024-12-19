@@ -7,7 +7,7 @@ allow-direct-references = true
 
 [project]
 name = "varnish"
-version = "1.0.2"
+version = "0.0.0"
 authors = [
     { name = "Julian Bilcke", email = "julian.bilcke@huggingface.co" }
 ]
