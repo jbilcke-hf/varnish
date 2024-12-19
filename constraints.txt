@@ -1,1 +1,1 @@
-git+https://github.com/huggingface/diffusers.git@main
+diffusers @ git+https://github.com/huggingface/diffusers.git@main
