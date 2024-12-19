@@ -254,57 +254,63 @@ class VideoProcessor:
     async def process_frames(
         self,
         frames: torch.Tensor,
-        upscale_factor: int = 0,
+        enable_upscale: bool = False,
         enable_interpolation: bool = False,
-        interpolation_exp: int = 1,  # Controls number of frames: 2^exp - 1 frames between each pair
-        output_fps: Optional[int] = None,
+        target_width: Optional[int] = None,
+        target_height: Optional[int] = None,
+        target_fps: Optional[int] = None,
         progress_callback: Optional[callable] = None
     ) -> torch.Tensor:
         """Process video frames with optional upscaling and interpolation"""
         processed_frames = frames
 
-        if upscale_factor > 0:
-            if upscale_factor not in [1, 2, 4, 8]:
-                raise ValueError(f"Unsupported upscale factor: {upscale_factor}. Must be 0, 1, 2, 4, or 8")
-            
-            if upscale_factor > 1:  # Skip if factor is 0 or 1
+        if enable_upscale and (target_width is not None or target_height is not None):
+            if progress_callback:
+                progress_callback(ProcessingProgress(
+                    ProcessingStage.UPSCALING,
+                    0.0,
+                    "Starting upscaling"
+                ))
+                
+            with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
+                model = self._load_model('upscale')
+                processed_frames = utils.upscale_batch_and_concatenate(
+                    model,
+                    processed_frames,
+                    self.device
+                )
+                
+                if target_width is not None or target_height is not None:
+                    processed_frames = F.interpolate(
+                        processed_frames,
+                        size=(
+                            target_height or processed_frames.shape[2],
+                            target_width or processed_frames.shape[3]
+                        ),
+                        mode='bicubic',
+                        align_corners=False
+                    )
+                
                 if progress_callback:
                     progress_callback(ProcessingProgress(
                         ProcessingStage.UPSCALING,
-                        0.0,
-                        f"Starting {upscale_factor}x upscaling"
+                        1.0,
+                        "Upscaling complete"
                     ))
-                    
-                with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
-                    model_key = f'upscale_x{upscale_factor}'
-                    model = self._load_model(model_key)
-                    processed_frames = utils.upscale_batch_and_concatenate(
-                        model,
-                        processed_frames,
-                        self.device
-                    )
-                    
-                    if progress_callback:
-                        progress_callback(ProcessingProgress(
-                            ProcessingStage.UPSCALING,
-                            1.0,
-                            "Upscaling complete"
-                        ))
 
-        if enable_interpolation and interpolation_exp > 0:
+        if enable_interpolation and target_fps is not None:
             if progress_callback:
                 progress_callback(ProcessingProgress(
                     ProcessingStage.INTERPOLATION,
                     0.0,
-                    f"Starting frame interpolation (2^{interpolation_exp}-1 frames)"
+                    "Starting frame interpolation"
                 ))
                 
             with torch.cuda.stream(self.rife_stream) if self.device == "cuda" else nullcontext():
                 model = self._load_model('rife')
                 processed_frames = rife_model.rife_inference_with_latents(
                     model,
-                    processed_frames,
-                    exp=interpolation_exp  # Pass the exponent to control frame generation
+                    processed_frames
                 )
                 
                 if progress_callback:
@@ -413,22 +419,6 @@ class Varnish:
         self.default_output_codec = output_codec
         self.default_output_quality = output_quality
 
-    def _run_async(self, frames: torch.Tensor, fps: int, upscale_factor: int, enable_interpolation: bool, interpolation_exp: int) -> Dict[str, Any]:
-        """Run asynchronous video processing in a synchronous context"""
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(
-                self.process_and_encode_video(
-                    frames=frames,
-                    fps=fps,
-                    upscale_factor=upscale_factor,
-                    enable_interpolation=enable_interpolation,
-                    interpolation_exp=interpolation_exp
-                )
-            )
-        finally:
-            loop.close()
-
     async def __call__(
         self,
         input_data: PipelineImageInput,
@@ -464,86 +454,87 @@ class Varnish:
         Returns:
             VarnishResult object containing processed video
         """
-        
-        prompt = data.get("inputs", None)
-        if not prompt:
-            raise ValueError("No prompt provided in the 'inputs' field")
+        if progress_callback:
+            progress_callback(ProcessingProgress(
+                ProcessingStage.LOADING,
+                0.0,
+                "Loading input data"
+            ))
 
-        # Get generation parameters
-        width = data.get("width", self.DEFAULT_WIDTH)
-        height = data.get("height", self.DEFAULT_HEIGHT)
-        width, height = self._validate_and_adjust_resolution(width, height)
+        # Load input data
+        frames, metadata = await self._load_video(input_data, input_fps)
         
-        num_frames = data.get("num_frames", self.DEFAULT_NUM_FRAMES)
-        fps = data.get("fps", self.DEFAULT_FPS)
-        num_frames, fps = self._validate_and_adjust_frames(num_frames, fps)
-        
-        # Get post-processing parameters
-        upscale_factor = data.get("upscale_factor", 0)
-        enable_interpolation = data.get("enable_interpolation", False)
-        interpolation_exp = data.get("interpolation_exp", 1)
-        
-        guidance_scale = data.get("guidance_scale", 7.5)
-        num_inference_steps = data.get("num_inference_steps", self.DEFAULT_NUM_STEPS)
-        seed = data.get("seed", -1)
-        seed = random.randint(0, 2**32 - 1) if seed == -1 else int(seed)
+        # Update metadata with input parameters
+        if input_fps:
+            metadata.fps = input_fps
+            metadata.duration = metadata.frame_count / input_fps
 
-        try:
-            with torch.no_grad():
-                random.seed(seed)
-                np.random.seed(seed)
-                generator.manual_seed(seed)
-                
-                generation_kwargs = {
-                    "prompt": prompt,
-                    "height": height,
-                    "width": width,
-                    "num_frames": num_frames,
-                    "guidance_scale": guidance_scale,
-                    "num_inference_steps": num_inference_steps,
-                    "output_type": "pt",
-                    "generator": generator
-                }
+        # Calculate final duration after potential frame interpolation
+        final_fps = output_fps or metadata.fps
+        final_frame_count = frames.shape[0]
+        if enable_interpolation and output_fps:
+            final_frame_count *= (output_fps / metadata.fps)
+        final_duration = final_frame_count / final_fps
 
-                # Generate frames using appropriate pipeline
-                image_data = data.get("image")
-                if image_data:
-                    if image_data.startswith('data:'):
-                        image_data = image_data.split(',', 1)[1]
-                    image_bytes = base64.b64decode(image_data)
-                    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-                    generation_kwargs["image"] = image
-                    frames = self.image_to_video(**generation_kwargs).frames
-                else:
-                    frames = self.text_to_video(**generation_kwargs).frames
+        # Update MMAudio config if prompts provided
+        if mmaudio_prompt is not None:
+            self.processor.mmaudio_config.prompt = mmaudio_prompt
+        if mmaudio_negative_prompt is not None:
+            self.processor.mmaudio_config.negative_prompt = mmaudio_negative_prompt
 
-                # Process and encode video
-                video_data_uri, metadata = self._run_async(
-                    frames=frames,
-                    fps=fps,
-                    upscale_factor=upscale_factor,
+        # Process video and generate audio in parallel
+        async with asyncio.TaskGroup() as tg:
+            # Video processing task
+            video_task = tg.create_task(
+                self.processor.process_frames(
+                    frames,
+                    enable_upscale=enable_upscale,
                     enable_interpolation=enable_interpolation,
-                    interpolation_exp=interpolation_exp
+                    target_width=target_width,
+                    target_height=target_height,
+                    target_fps=output_fps,
+                    progress_callback=progress_callback
                 )
-                
-                # Add generation metadata
-                metadata.update({
-                    "num_inference_steps": num_inference_steps,
-                    "seed": seed,
-                    "upscale_factor": upscale_factor,
-                    "interpolation_enabled": enable_interpolation,
-                    "interpolation_exp": interpolation_exp
-                })
-                
-                return {
-                    "video": video_data_uri,
-                    "content-type": "video/mp4",
-                    "metadata": metadata
-                }
+            )
+            
+            # Audio generation task if enabled
+            audio_task = None
+            if self.processor.enable_mmaudio:
+                audio_task = tg.create_task(
+                    self.processor.generate_audio(
+                        frames,
+                        final_duration,
+                        progress_callback=progress_callback
+                    )
+                )
 
-        except Exception as e:
-            logger.error(f"Error generating video: {str(e)}")
-            raise RuntimeError(f"Error generating video: {str(e)}")
+        # Get results from parallel processing
+        processed_frames = await video_task
+        audio_path = await audio_task if audio_task else None
+
+        # Apply film grain if requested
+        if grain_amount > 0:
+            noise = torch.randn_like(processed_frames) * (grain_amount / 100.0)
+            processed_frames = torch.clamp(processed_frames + noise, 0, 1)
+
+        if progress_callback:
+            progress_callback(ProcessingProgress(
+                ProcessingStage.ENCODING,
+                1.0,
+                "Processing complete"
+            ))
+
+        return VarnishResult(
+            frames=processed_frames,
+            metadata=VideoMetadata(
+                width=processed_frames.shape[3],
+                height=processed_frames.shape[2],
+                fps=output_fps or metadata.fps,
+                duration=output_duration_in_sec or metadata.duration,
+                frame_count=processed_frames.shape[0]
+            ),
+            audio_path=audio_path
+        )
 
     async def _load_video(
         self,
