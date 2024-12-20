@@ -115,7 +115,7 @@ class VideoProcessor:
         
         # Log directory structure for debugging
         logger.debug("Logging directory structure for debugging...")
-        log_directory_structure(str(model_base_dir.parent))
+        log_directory_structure(str(Path(model_base_dir).parent))
         
         # Define relative model paths
         model_paths = {
