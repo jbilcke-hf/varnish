@@ -522,7 +522,7 @@ class Varnish:
 
     async def _load_video(
         self,
-        video_input: Union[str, List],
+        video_input: Union[str, List, torch.Tensor],
         input_fps: int
     ) -> tuple[torch.Tensor, VideoMetadata]:
         """
@@ -535,7 +535,21 @@ class Varnish:
         Returns:
             Tuple of (frames tensor, video metadata)
         """
-        if isinstance(video_input, str):
+        if isinstance(video_input, torch.Tensor):
+            # Handle tensor input directly - assumes BCHW format
+            if len(video_input.shape) == 4:  # [batch, channels, height, width]
+                metadata = VideoMetadata(
+                    width=video_input.shape[3],
+                    height=video_input.shape[2],
+                    fps=input_fps,
+                    duration=video_input.shape[0] / input_fps,
+                    frame_count=video_input.shape[0]
+                )
+                return video_input, metadata
+            else:
+                raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {video_input.shape}")
+                
+        elif isinstance(video_input, str):
             if self._is_base64(video_input):
                 # Handle base64 video
                 return await self._load_base64_video(video_input, input_fps)
