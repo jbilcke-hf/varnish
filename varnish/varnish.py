@@ -6,7 +6,6 @@ import io
 import os
 import re
 import tempfile
-import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
@@ -39,6 +38,9 @@ from mmaudio.model.utils.features_utils import FeaturesUtils
 
 from .utils import load_sd_upscale
 from .rife_model import load_rife_model
+
+#import logging
+#logger = logging.getLogger(__name__)
 
 # Type definitions
 PipelineImageInput = Union[
@@ -441,7 +443,6 @@ class Varnish:
         Returns:
             VarnishResult object containing processed video
         """
-        logger = logging.getLogger(__name__)
 
         if progress_callback:
             progress_callback(ProcessingProgress(
