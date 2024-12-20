@@ -256,17 +256,16 @@ class VideoProcessor:
     async def process_frames(
         self,
         frames: torch.Tensor,
-        enable_upscale: bool = False,
+        upscale_factor: Optional[float] = None,  # Replace the old parameters
         enable_interpolation: bool = False,
-        target_width: Optional[int] = None,
-        target_height: Optional[int] = None,
         target_fps: Optional[int] = None,
         progress_callback: Optional[callable] = None
     ) -> torch.Tensor:
         """Process video frames with optional upscaling and interpolation"""
         processed_frames = frames
 
-        if enable_upscale and (target_width is not None or target_height is not None):
+        # Replace the upscaling logic
+        if upscale_factor and upscale_factor > 1:
             if progress_callback:
                 progress_callback(ProcessingProgress(
                     ProcessingStage.UPSCALING,
@@ -275,20 +274,32 @@ class VideoProcessor:
                 ))
                 
             with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
-                model = self._load_model('upscale')
+                # Choose the appropriate upscale model based on factor
+                if upscale_factor <= 2:
+                    model_type = 'upscale_x2'
+                elif upscale_factor <= 4:
+                    model_type = 'upscale_x4'
+                else:
+                    model_type = 'upscale_x8'
+                    
+                model = self._load_model(model_type)
                 processed_frames = utils.upscale_batch_and_concatenate(
                     model,
                     processed_frames,
                     self.device
                 )
                 
-                if target_width is not None or target_height is not None:
+                # If needed, do additional interpolation to reach exact factor
+                current_size = processed_frames.shape[2:]  # [height, width]
+                target_size = (
+                    int(frames.shape[2] * upscale_factor),
+                    int(frames.shape[3] * upscale_factor)
+                )
+                
+                if current_size != target_size:
                     processed_frames = F.interpolate(
                         processed_frames,
-                        size=(
-                            target_height or processed_frames.shape[2],
-                            target_width or processed_frames.shape[3]
-                        ),
+                        size=target_size,
                         mode='bicubic',
                         align_corners=False
                     )
@@ -299,30 +310,6 @@ class VideoProcessor:
                         1.0,
                         "Upscaling complete"
                     ))
-
-        if enable_interpolation and target_fps is not None:
-            if progress_callback:
-                progress_callback(ProcessingProgress(
-                    ProcessingStage.INTERPOLATION,
-                    0.0,
-                    "Starting frame interpolation"
-                ))
-                
-            with torch.cuda.stream(self.rife_stream) if self.device == "cuda" else nullcontext():
-                model = self._load_model('rife')
-                processed_frames = rife_model.rife_inference_with_latents(
-                    model,
-                    processed_frames
-                )
-                
-                if progress_callback:
-                    progress_callback(ProcessingProgress(
-                        ProcessingStage.INTERPOLATION,
-                        1.0,
-                        "Frame interpolation complete"
-                    ))
-
-        return processed_frames
 
 class VarnishResult:
     """Handle processed video results and output generation"""
@@ -420,17 +407,15 @@ class Varnish:
         self.default_output_format = output_format
         self.default_output_codec = output_codec
         self.default_output_quality = output_quality
-
+    
     async def __call__(
         self,
         input_data: PipelineImageInput,
         input_fps: Optional[int] = 24,
         output_duration_in_sec: Optional[float] = None,
         output_fps: Optional[int] = None,
-        enable_upscale: bool = False,
+        upscale_factor: Optional[float] = None,  # Add this instead of the old parameters
         enable_interpolation: bool = False,
-        target_width: Optional[int] = None,
-        target_height: Optional[int] = None,
         grain_amount: float = 0.0,
         mmaudio_prompt: Optional[str] = None,
         mmaudio_negative_prompt: Optional[str] = None,
@@ -444,10 +429,8 @@ class Varnish:
             input_fps: Input frame rate
             output_duration_in_sec: Desired output duration
             output_fps: Desired output frame rate
-            enable_upscale: Whether to enable upscaling
+            upscale_factor: Factor to upscale the video (e.g., 2.0 doubles dimensions)
             enable_interpolation: Whether to enable frame interpolation
-            target_width: Desired output width
-            target_height: Desired output height
             grain_amount: Amount of film grain to add (0-100)
             mmaudio_prompt: Text prompt for audio generation
             mmaudio_negative_prompt: Negative prompt for audio generation
@@ -456,6 +439,7 @@ class Varnish:
         Returns:
             VarnishResult object containing processed video
         """
+
         if progress_callback:
             progress_callback(ProcessingProgress(
                 ProcessingStage.LOADING,
@@ -490,10 +474,8 @@ class Varnish:
             video_task = tg.create_task(
                 self.processor.process_frames(
                     frames,
-                    enable_upscale=enable_upscale,
+                    upscale_factor=upscale_factor,
                     enable_interpolation=enable_interpolation,
-                    target_width=target_width,
-                    target_height=target_height,
                     target_fps=output_fps,
                     progress_callback=progress_callback
                 )
