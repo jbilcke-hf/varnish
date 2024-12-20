@@ -39,8 +39,8 @@ from mmaudio.model.utils.features_utils import FeaturesUtils
 from .utils import load_sd_upscale
 from .rife_model import load_rife_model
 
-#import logging
-#logger = logging.getLogger(__name__)
+import logging
+logger = logging.getLogger(__name__)
 
 # Type definitions
 PipelineImageInput = Union[
@@ -97,16 +97,40 @@ class VideoProcessor:
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         enable_mmaudio: bool = True,
         mmaudio_config: Optional[MMAudioConfig] = None,
+        model_base_dir: Optional[str] = None
     ):
         self.device = device
         self._models: dict[str, Any] = {}
-        self.model_paths = {
-            'upscale_x2': "./varnish/real_esrgan/RealESRGAN_x2.pth",
-            'upscale_x4': "./varnish/real_esrgan/RealESRGAN_x4.pth",
-            'upscale_x8': "./varnish/real_esrgan/RealESRGAN_x8.pth",
-            'mmaudio': "./varnish/mmaudio",
-            'rife': "./varnish/rife/rife-flownet-4.13.2.safetensors"
+        
+        # Get base directory for models
+        if model_base_dir is None:
+            # Try to find the varnish directory relative to the current file
+            current_file = Path(__file__).resolve()
+            model_base_dir = current_file.parent.parent / 'varnish'
+            if not model_base_dir.exists():
+                # Fall back to current working directory
+                model_base_dir = Path.cwd() / 'varnish'
+        
+        # Log directory structure for debugging
+        logger.debug("Logging directory structure for debugging...")
+        log_directory_structure(str(model_base_dir.parent))
+        
+        # Define relative model paths
+        model_paths = {
+            'upscale_x2': "real_esrgan/RealESRGAN_x2.pth",
+            'upscale_x4': "real_esrgan/RealESRGAN_x4.pth",
+            'upscale_x8': "real_esrgan/RealESRGAN_x8.pth",
+            'mmaudio': "mmaudio",
+            'rife': "rife/rife-flownet-4.13.2.safetensors"
         }
+        
+        # Verify and convert to absolute paths
+        try:
+            self.model_paths = verify_model_paths(model_paths, base_dir=model_base_dir)
+        except Exception as e:
+            logger.error(f"Error verifying model paths: {e}")
+            raise RuntimeError(f"Failed to initialize VideoProcessor: {str(e)}")
+        
         self.enable_mmaudio = enable_mmaudio
         self.mmaudio_config = mmaudio_config or MMAudioConfig()
         
@@ -118,7 +142,7 @@ class VideoProcessor:
         
         if self.enable_mmaudio:
             self._setup_mmaudio()
-
+        
     def _setup_mmaudio(self) -> None:
         """Initialize MMAudio models and utilities"""
         with torch.cuda.stream(self.mmaudio_stream) if self.device == "cuda" else nullcontext():
