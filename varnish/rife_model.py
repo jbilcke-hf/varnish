@@ -2,12 +2,13 @@ import torch
 from diffusers.image_processor import VaeImageProcessor
 from torch.nn import functional as F
 import cv2
-import utils
-from rife.pytorch_msssim import ssim_matlab
+from .rife.pytorch_msssim import ssim_matlab
 import numpy as np
 import logging
 import skvideo.io
-from rife.RIFE_HDv3 import Model
+from .rife.RIFE_HDv3 import Model
+
+import .utils
 
 logger = logging.getLogger(__name__)
 device = "cuda" if torch.cuda.is_available() else "cpu"
