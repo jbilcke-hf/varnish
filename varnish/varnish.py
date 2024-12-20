@@ -428,11 +428,13 @@ class Varnish:
         output_quality: int = 23,
         enable_mmaudio: bool = True,
         mmaudio_config: Optional[MMAudioConfig] = None,
+        model_base_dir: Optional[str] = None,
     ):
         self.processor = VideoProcessor(
             device=device,
             enable_mmaudio=enable_mmaudio,
-            mmaudio_config=mmaudio_config
+            mmaudio_config=mmaudio_config,
+            model_base_dir=model_base_dir,
         )
         self.default_output_format = output_format
         self.default_output_codec = output_codec
