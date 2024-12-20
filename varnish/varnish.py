@@ -39,6 +39,8 @@ from mmaudio.model.utils.features_utils import FeaturesUtils
 from .utils import load_sd_upscale
 from .rife_model import load_rife_model
 
+from pathlib import Path
+from .debug_utils import verify_model_paths, log_directory_structure
 import logging
 logger = logging.getLogger(__name__)
 
