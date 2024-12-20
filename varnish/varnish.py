@@ -21,9 +21,9 @@ import torch.nn.functional as F
 import torchaudio
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip
 
-from . import mmaudio
+import mmaudio
 
-from .mmaudio.eval_utils import (
+from mmaudio.eval_utils import (
     ModelConfig,
     all_model_cfg,
     generate,
@@ -31,10 +31,10 @@ from .mmaudio.eval_utils import (
     make_video,
     setup_eval_logging
 )
-from .mmaudio.model.flow_matching import FlowMatching
-from .mmaudio.model.networks import MMAudio, get_my_mmaudio
-from .mmaudio.model.sequence_config import SequenceConfig
-from .mmaudio.model.utils.features_utils import FeaturesUtils
+from mmaudio.model.flow_matching import FlowMatching
+from mmaudio.model.networks import MMAudio, get_my_mmaudio
+from mmaudio.model.sequence_config import SequenceConfig
+from mmaudio.model.utils.features_utils import FeaturesUtils
 
 from .utils import load_sd_upscale
 from .rife_model import load_rife_model

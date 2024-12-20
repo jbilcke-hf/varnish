@@ -45,6 +45,7 @@ dependencies = [
     'transformers>=4.44.0',
     'sentencepiece>=0.2.0',
     'diffusers @ git+https://github.com/huggingface/diffusers.git@main',
+    'mmaudio @ git+https://github.com/hkchengrex/MMAudio.git@45f44e067c6451d5e646b494bc962724882c003c',
     'huggingface_hub>=0.26',
     'librosa>=0.8.1',
     'torchaudio>=2.2.0',
