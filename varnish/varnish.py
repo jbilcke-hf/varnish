@@ -101,7 +101,8 @@ class VideoProcessor:
             'upscale_x2': "./varnish/real_esrgan/RealESRGAN_x2.pth",
             'upscale_x4': "./varnish/real_esrgan/RealESRGAN_x4.pth",
             'upscale_x8': "./varnish/real_esrgan/RealESRGAN_x8.pth",
-            'rife': "./varnish/rife"
+            'mmaudio': "./varnish/mmaudio",
+            'rife': "./varnish/rife/rife-flownet-4.13.2.safetensors"
         }
         self.enable_mmaudio = enable_mmaudio
         self.mmaudio_config = mmaudio_config or MMAudioConfig()
@@ -149,7 +150,9 @@ class VideoProcessor:
                     self.device
                 )
             elif model_type == 'rife':
-                raise ValueError("rife shouldn't be loaded using _load_model")
+                self._models[model_type] = load_rife_model(
+                    self.model_paths[model_type]
+                )
         return self._models[model_type]
 
     async def _resize_for_mmaudio(self, frames: torch.Tensor) -> torch.Tensor:
