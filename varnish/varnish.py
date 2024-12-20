@@ -98,10 +98,10 @@ class VideoProcessor:
         self.device = device
         self._models: dict[str, Any] = {}
         self.model_paths = {
-            'upscale_x2': "model_real_esran/RealESRGAN_x2.pth",
-            'upscale_x4': "model_real_esran/RealESRGAN_x4.pth",
-            'upscale_x8': "model_real_esran/RealESRGAN_x8.pth",
-            'rife': "model_rife"
+            'upscale_x2': "./varnish/real_esrgan/RealESRGAN_x2.pth",
+            'upscale_x4': "./varnish/real_esrgan/RealESRGAN_x4.pth",
+            'upscale_x8': "./varnish/real_esrgan/RealESRGAN_x8.pth",
+            'rife': "./varnish/rife"
         }
         self.enable_mmaudio = enable_mmaudio
         self.mmaudio_config = mmaudio_config or MMAudioConfig()
@@ -149,9 +149,7 @@ class VideoProcessor:
                     self.device
                 )
             elif model_type == 'rife':
-                self._models[model_type] = load_rife_model(
-                    self.model_paths[model_type]
-                )
+                raise ValueError("rife shouldn't be loaded using _load_model")
         return self._models[model_type]
 
     async def _resize_for_mmaudio(self, frames: torch.Tensor) -> torch.Tensor:
@@ -439,6 +437,7 @@ class Varnish:
         Returns:
             VarnishResult object containing processed video
         """
+        logger = logging.getLogger(__name__)
 
         if progress_callback:
             progress_callback(ProcessingProgress(
