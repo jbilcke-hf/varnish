@@ -3,14 +3,9 @@ import logging
 from pathlib import Path
 from typing import Dict, Optional
 
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def setup_debug_logging():
-    """Configure detailed debug logging"""
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
 
 def verify_model_paths(model_paths: Dict[str, str], base_dir: Optional[Path] = None) -> Dict[str, str]:
     """
@@ -28,7 +23,9 @@ def verify_model_paths(model_paths: Dict[str, str], base_dir: Optional[Path] = N
     
     logger.debug(f"Current working directory: {os.getcwd()}")
     logger.debug(f"Base directory for models: {base_dir}")
-    
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Base directory for models: {base_dir}")
+
     verified_paths = {}
     for name, path in model_paths.items():
         # Convert to Path object
@@ -48,16 +45,23 @@ def verify_model_paths(model_paths: Dict[str, str], base_dir: Optional[Path] = N
         # Log existence check
         if path_obj.exists():
             logger.debug(f"✓ Model file exists: {name} -> {path_obj}")
+            print(f"✓ Model file exists: {name} -> {path_obj}")
         else:
             logger.error(f"✗ Model file missing: {name} -> {path_obj}")
+            print(f"✗ Model file missing: {name} -> {path_obj}")
+            
             parent = path_obj.parent
             if parent.exists():
                 logger.debug(f"Parent directory exists: {parent}")
+                print(f"Parent directory exists: {parent}")
                 logger.debug(f"Contents of {parent}:")
+                print(f"Contents of {parent}:")
                 for item in parent.iterdir():
                     logger.debug(f"  {item.name}")
+                    print(f"  {item.name}")
             else:
                 logger.error(f"Parent directory missing: {parent}")
+                print(f"Parent directory missing: {parent}")
             
         verified_paths[name] = str(path_obj)
         
