@@ -8,7 +8,7 @@ import logging
 import skvideo.io
 from .rife.RIFE_HDv3 import Model
 
-import .utils
+from . import utils
 
 logger = logging.getLogger(__name__)
 device = "cuda" if torch.cuda.is_available() else "cpu"
