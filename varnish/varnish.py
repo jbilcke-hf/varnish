@@ -6,6 +6,7 @@ import io
 import os
 import re
 import tempfile
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
