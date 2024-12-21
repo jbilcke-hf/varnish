@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import asyncio
 import base64
 import io
@@ -287,16 +288,22 @@ class VideoProcessor:
     async def process_frames(
         self,
         frames: torch.Tensor,
-        config: GenerationConfig
-    ) -> tuple[str, dict]:
-        """Post-process generated frames using Varnish
+        upscale_factor: Optional[float] = None,
+        enable_interpolation: bool = False,
+        target_fps: Optional[int] = None,
+        progress_callback: Optional[callable] = None
+    ) -> tuple[torch.Tensor, VideoMetadata]:
+        """Process video frames with optional upscaling and interpolation
         
         Args:
-            frames: Generated video frames tensor
-            config: Generation configuration
+            frames: Input video frames tensor
+            upscale_factor: Optional factor to upscale the video
+            enable_interpolation: Whether to enable frame interpolation
+            target_fps: Target output frame rate
+            progress_callback: Optional callback for progress updates
             
         Returns:
-            Tuple of (video data URI, metadata dictionary)
+            Tuple of (processed frames tensor, metadata)
         """
         try:
             # Reshape frames if needed - ensure BCHW format
@@ -310,43 +317,80 @@ class VideoProcessor:
                 raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {frames.shape}")
 
             # Ensure frames are on the correct device and in the right format
-            frames = frames.to(device=self.varnish.processor.device, dtype=torch.float32)
+            frames = frames.to(device=self.device, dtype=torch.float32)
             frames = frames / 255.0 if frames.max() > 1.0 else frames
 
-            # Process video with Varnish - using await directly
-            result = await self.varnish(
-                input_data=frames,
-                input_fps=config.fps,
-                upscale_factor=config.upscale_factor if config.upscale_factor > 1 else None,
-                enable_interpolation=config.enable_interpolation,
-                output_fps=config.fps
+            # Process upscaling if requested
+            if upscale_factor and upscale_factor > 1:
+                if progress_callback:
+                    progress_callback(ProcessingProgress(
+                        ProcessingStage.UPSCALING,
+                        0.0,
+                        "Starting upscaling"
+                    ))
+                    
+                with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
+                    # Select appropriate upscale model based on factor
+                    if upscale_factor <= 2:
+                        model_key = 'upscale_x2'
+                    elif upscale_factor <= 4:
+                        model_key = 'upscale_x4'
+                    else:
+                        model_key = 'upscale_x8'
+                        
+                    model = self._load_model(model_key)
+                    frames = await asyncio.to_thread(
+                        upscale_batch_and_concatenate,
+                        model,
+                        frames,
+                        self.device
+                    )
+                    
+                    if progress_callback:
+                        progress_callback(ProcessingProgress(
+                            ProcessingStage.UPSCALING,
+                            1.0,
+                            "Upscaling complete"
+                        ))
+
+            # Process frame interpolation if requested
+            if enable_interpolation:
+                if progress_callback:
+                    progress_callback(ProcessingProgress(
+                        ProcessingStage.INTERPOLATION,
+                        0.0,
+                        "Starting frame interpolation"
+                    ))
+                    
+                with torch.cuda.stream(self.rife_stream) if self.device == "cuda" else nullcontext():
+                    rife_model = self._load_model('rife')
+                    frames = await asyncio.to_thread(
+                        rife_inference_with_latents,
+                        rife_model,
+                        frames,
+                        target_fps
+                    )
+                    
+                    if progress_callback:
+                        progress_callback(ProcessingProgress(
+                            ProcessingStage.INTERPOLATION,
+                            1.0,
+                            "Frame interpolation complete"
+                        ))
+
+            # Create metadata
+            metadata = VideoMetadata(
+                width=frames.shape[3],
+                height=frames.shape[2],
+                fps=target_fps or frames.shape[0],  # Use original fps if no target
+                duration=frames.shape[0] / (target_fps or frames.shape[0]),
+                frame_count=frames.shape[0]
             )
             
-            # Convert to data URI - using await directly
-            video_uri = await result.write(
-                output_type="data-uri",
-                output_format="mp4",
-                output_codec="h264",
-                output_quality=23
-            )
-            
-            # Collect metadata
-            metadata = {
-                "width": result.metadata.width,
-                "height": result.metadata.height,
-                "num_frames": result.metadata.frame_count,
-                "fps": result.metadata.fps,
-                "duration": result.metadata.duration,
-                "num_inference_steps": config.num_inference_steps,
-                "seed": config.seed,
-                "upscale_factor": config.upscale_factor,
-                "interpolation_enabled": config.enable_interpolation
-            }
-            
-            return video_uri, metadata
+            return frames, metadata
 
         except Exception as e:
-            logger.error(f"Error in process_frames: {str(e)}")
+            logger.error(f"Error processing frames: {str(e)}")
             raise RuntimeError(f"Failed to process frames: {str(e)}")
     
 class VarnishResult:
