@@ -13,8 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, List, Literal, Optional, Union, AsyncGenerator
 
-import cv2
-import ffmpeg
+import av
 import numpy as np
 import PIL.Image
 import torch
@@ -416,41 +415,66 @@ class VarnishResult:
         output_quality: int = 23,
         output_bitrate: Optional[str] = None,
     ) -> Union[str, bytes, bool]:
-        """Write processed video to specified format"""
+        """Write processed video to specified format using PyAV"""
         if output_type == "file" and not output_filename:
             raise ValueError("output_filename is required for file output type")
 
-        # Prepare video data
-        frames_np = self.frames.cpu().numpy()
-        
+        # Convert frames to numpy for PyAV
+        frames_np = (self.frames.cpu().numpy() * 255).astype(np.uint8)
+        frames_np = frames_np.transpose(0, 2, 3, 1)  # Convert from BCHW to BHWC
+
         # Create temporary file if needed
         if not self._temp_file:
             with tempfile.NamedTemporaryFile(suffix=f".{output_format}", delete=False) as tmp:
                 self._temp_file = tmp.name
 
-        # Prepare FFmpeg command
-        stream = ffmpeg.input(
-            'pipe:',
-            format='rawvideo',
-            pix_fmt='rgb24',
-            s=f'{self.metadata.width}x{self.metadata.height}',
-            r=self.metadata.fps
-        )
+        # Open output container
+        output = av.open(self._temp_file, mode='w')
         
-        # Add audio if available
-        if self.audio_path:
-            audio_stream = ffmpeg.input(self.audio_path)
-            stream = ffmpeg.concat(stream, audio_stream, v=1, a=1)
-        
-        stream = ffmpeg.output(
-            stream,
-            self._temp_file,
-            vcodec=output_codec,
-            crf=output_quality,
-            **({'b:v': output_bitrate} if output_bitrate else {})
-        )
-        
-        await asyncio.to_thread(ffmpeg.run, stream, capture_stdout=True, capture_stderr=True)
+        try:
+            # Add video stream
+            stream = output.add_stream(output_codec, rate=self.metadata.fps)
+            stream.width = self.metadata.width
+            stream.height = self.metadata.height
+            stream.pix_fmt = 'yuv420p'
+            
+            # Set quality/bitrate
+            if output_bitrate:
+                # Convert string bitrate (e.g., "5M") to bits per second
+                multiplier = {'k': 1000, 'K': 1000, 'm': 1000000, 'M': 1000000}
+                number = float(re.match(r'(\d+)', output_bitrate).group(1))
+                unit = output_bitrate[-1] if output_bitrate[-1] in multiplier else ''
+                bitrate = int(number * multiplier.get(unit, 1))
+                stream.bit_rate = bitrate
+            else:
+                # Use quality-based encoding
+                stream.options = {'crf': str(output_quality)}
+
+            # Add audio stream if available
+            audio_stream = None
+            if self.audio_path:
+                audio_container = av.open(self.audio_path)
+                audio_stream = output.add_stream(template=audio_container.streams.audio[0])
+
+            # Write video frames
+            for frame_idx, frame_data in enumerate(frames_np):
+                frame = av.VideoFrame.from_ndarray(frame_data, format='rgb24')
+                packet = stream.encode(frame)
+                output.mux(packet)
+
+            # Flush video stream
+            packet = stream.encode(None)
+            output.mux(packet)
+
+            # Copy audio if available
+            if audio_stream and self.audio_path:
+                for packet in audio_container.demux():
+                    if packet.dts is not None:
+                        output.mux(packet)
+                audio_container.close()
+
+        finally:
+            output.close()
 
         if output_type == "file":
             os.rename(self._temp_file, output_filename)

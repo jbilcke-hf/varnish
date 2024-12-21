@@ -9,7 +9,6 @@ import PIL.Image
 import safetensors.torch
 import tqdm
 import logging
-from diffusers.utils import export_to_video
 from spandrel import ModelLoader
 
 logger = logging.getLogger(__file__)
@@ -229,15 +228,6 @@ def upscale_batch_and_concatenate(upscale_model, latents, inf_device, output_dev
     result = torch.cat(upscaled_latents, dim=0)
     logger.info(f"Final upscaled shape: {result.shape}")
     return result
-
-
-def save_video(tensor: Union[List[np.ndarray], List[PIL.Image.Image]], fps: int = 8):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    video_path = f"./output/{timestamp}.mp4"
-    os.makedirs(os.path.dirname(video_path), exist_ok=True)
-    export_to_video(tensor, video_path, fps=fps)
-    return video_path
-
 
 class ProgressBar:
     def __init__(self, total, desc=None):
