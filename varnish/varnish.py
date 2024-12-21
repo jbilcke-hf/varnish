@@ -297,21 +297,6 @@ class VideoProcessor:
                     ))
                 return tmp.name
 
-    def clean_frames(
-        self,
-        frames: torch.Tensor
-    ) -> torch.Tensor:
-        # Reshape frames if needed - ensure BCHW format
-        if len(frames.shape) == 3:  # CHW format
-            frames = frames.unsqueeze(0)  # Add batch dimension
-        elif len(frames.shape) == 5:  # NBCHW format
-            frames = frames.squeeze(0)  # Remove batch dimension
-
-        # Ensure frames are in correct format [batch, channels, height, width]
-        if len(frames.shape) != 4:
-            raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {frames.shape}")
-        return frames
-
     async def process_frames(
         self,
         frames: torch.Tensor,
@@ -534,6 +519,21 @@ class Varnish:
         self.default_output_codec = output_codec
         self.default_output_quality = output_quality
     
+    def clean_frames(
+        self,
+        frames: torch.Tensor
+    ) -> torch.Tensor:
+        # Reshape frames if needed - ensure BCHW format
+        if len(frames.shape) == 3:  # CHW format
+            frames = frames.unsqueeze(0)  # Add batch dimension
+        elif len(frames.shape) == 5:  # NBCHW format
+            frames = frames.squeeze(0)  # Remove batch dimension
+
+        # Ensure frames are in correct format [batch, channels, height, width]
+        if len(frames.shape) != 4:
+            raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {frames.shape}")
+        return frames
+
     async def __call__(
         self,
         input_data: PipelineImageInput,
