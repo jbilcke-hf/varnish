@@ -314,7 +314,7 @@ class VideoProcessor:
                     model_type = 'upscale_x8'
                     
                 model = self._load_model(model_type)
-                processed_frames = utils.upscale_batch_and_concatenate(
+                processed_frames = upscale_batch_and_concatenate(
                     model,
                     processed_frames,
                     self.device
