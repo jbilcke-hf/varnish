@@ -210,6 +210,8 @@ class VideoProcessor:
     async def _generate_audio(
         self,
         frames: torch.Tensor,
+        audio_prompt: str,
+        audio_negative_prompt: str,
         duration: float,
         progress_callback: Optional[callable] = None
     ) -> str:
@@ -257,8 +259,8 @@ class VideoProcessor:
             audios = generate(
                 resized_frames,
                 None,  # sync frames
-                [self.mmaudio_config.prompt],
-                negative_text=[self.mmaudio_config.negative_prompt],
+                [prompt],
+                negative_text=[negative_prompt],
                 feature_utils=utils,
                 net=net,
                 fm=fm,
@@ -285,6 +287,21 @@ class VideoProcessor:
                     ))
                 return tmp.name
 
+    def clean_frames(
+        self,
+        frames: torch.Tensor
+    ) -> torch.Tensor:
+        # Reshape frames if needed - ensure BCHW format
+        if len(frames.shape) == 3:  # CHW format
+            frames = frames.unsqueeze(0)  # Add batch dimension
+        elif len(frames.shape) == 5:  # NBCHW format
+            frames = frames.squeeze(0)  # Remove batch dimension
+
+        # Ensure frames are in correct format [batch, channels, height, width]
+        if len(frames.shape) != 4:
+            raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {frames.shape}")
+        return frames
+
     async def process_frames(
         self,
         frames: torch.Tensor,
@@ -306,16 +323,6 @@ class VideoProcessor:
             Tuple of (processed frames tensor, metadata)
         """
         try:
-            # Reshape frames if needed - ensure BCHW format
-            if len(frames.shape) == 3:  # CHW format
-                frames = frames.unsqueeze(0)  # Add batch dimension
-            elif len(frames.shape) == 5:  # NBCHW format
-                frames = frames.squeeze(0)  # Remove batch dimension
-
-            # Ensure frames are in correct format [batch, channels, height, width]
-            if len(frames.shape) != 4:
-                raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {frames.shape}")
-
             # Ensure frames are on the correct device and in the right format
             frames = frames.to(device=self.device, dtype=torch.float32)
             frames = frames / 255.0 if frames.max() > 1.0 else frames
@@ -520,14 +527,13 @@ class Varnish:
     async def __call__(
         self,
         input_data: PipelineImageInput,
-        input_fps: Optional[int] = 24,
-        output_duration_in_sec: Optional[float] = None,
-        output_fps: Optional[int] = None,
-        upscale_factor: Optional[float] = None,
-        enable_interpolation: bool = False,
+        fps: int = 24,
+        double_num_frames: bool = True,
+        super_resolution: bool = True,
         grain_amount: float = 0.0,
-        mmaudio_prompt: Optional[str] = None,
-        mmaudio_negative_prompt: Optional[str] = None,
+        enable_audio: Optional[bool] = None,
+        audio_prompt: Optional[str] = None,
+        audio_negative_prompt: Optional[str] = None,
         progress_callback: Optional[callable] = None,
     ) -> VarnishResult:
         """
@@ -535,14 +541,11 @@ class Varnish:
         
         Args:
             input_data: Input video or image sequence
-            input_fps: Input frame rate
-            output_duration_in_sec: Desired output duration
-            output_fps: Desired output frame rate
-            upscale_factor: Factor to upscale the video (e.g., 2.0 doubles dimensions)
-            enable_interpolation: Whether to enable frame interpolation
+             <PUT CODE HERE>
             grain_amount: Amount of film grain to add (0-100)
-            mmaudio_prompt: Text prompt for audio generation
-            mmaudio_negative_prompt: Negative prompt for audio generation
+            enable_audio (optional, bool): Whether to automatically generate an audio soundtrack
+            audio_prompt (optional, str): Text prompt for audio generation
+            audio_negative_prompt (optional, str): Negative prompt for audio generation
             progress_callback: Optional callback for progress updates
         
         Returns:
@@ -556,26 +559,35 @@ class Varnish:
                     "Loading input data"
                 ))
 
+            frames = self.clean_frames(input_data)
+
+            # Calculate duration for audio generation
+            input_frame_count = len(frames) if isinstance(frames, (list, tuple)) else frames.shape[0]
+            final_frame_count = input_frame_count * (2 if double_num_frames else 1)
+            duration = final_frame_count / fps
+
             # Process video and generate audio in parallel
             async with asyncio.TaskGroup() as tg:
                 # Video processing task
                 video_task = tg.create_task(
                     self.processor.process_frames(
-                        frames=input_data,
-                        upscale_factor=upscale_factor,
-                        enable_interpolation=enable_interpolation,
-                        target_fps=output_fps,
+                        frames,
+                        upscale_factor=2 if super_resolution else None,
+                        enable_interpolation=double_num_frames,
+                        target_fps=fps,
                         progress_callback=progress_callback
                     )
                 )
                 
                 # Audio generation task if enabled
                 audio_task = None
-                if self.processor.enable_mmaudio:
+                if self.processor.enable_mmaudio and enable_audio:
                     audio_task = tg.create_task(
                         self.processor.generate_audio(
                             input_data,
-                            output_duration_in_sec or (len(input_data) / (output_fps or input_fps)),
+                            audio_prompt=audio_prompt,
+                            audio_negative_prompt=audio_negative_prompt,
+                            duration=duration,
                             progress_callback=progress_callback
                         )
                     )
@@ -601,8 +613,8 @@ class Varnish:
                 metadata=VideoMetadata(
                     width=processed_frames.shape[3],
                     height=processed_frames.shape[2],
-                    fps=output_fps or input_fps,
-                    duration=output_duration_in_sec or (len(processed_frames) / (output_fps or input_fps)),
+                    fps=fps,
+                    duration=duration,
                     frame_count=len(processed_frames)
                 ),
                 audio_path=audio_path
