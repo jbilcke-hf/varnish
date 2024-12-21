@@ -287,61 +287,68 @@ class VideoProcessor:
     async def process_frames(
         self,
         frames: torch.Tensor,
-        upscale_factor: Optional[float] = None,  # Replace the old parameters
-        enable_interpolation: bool = False,
-        target_fps: Optional[int] = None,
-        progress_callback: Optional[callable] = None
-    ) -> torch.Tensor:
-        """Process video frames with optional upscaling and interpolation"""
-        processed_frames = frames
+        config: GenerationConfig
+    ) -> tuple[str, dict]:
+        """Post-process generated frames using Varnish
+        
+        Args:
+            frames: Generated video frames tensor
+            config: Generation configuration
+            
+        Returns:
+            Tuple of (video data URI, metadata dictionary)
+        """
+        try:
+            # Reshape frames if needed - ensure BCHW format
+            if len(frames.shape) == 3:  # CHW format
+                frames = frames.unsqueeze(0)  # Add batch dimension
+            elif len(frames.shape) == 5:  # NBCHW format
+                frames = frames.squeeze(0)  # Remove batch dimension
 
-        # Replace the upscaling logic
-        if upscale_factor and upscale_factor > 1:
-            if progress_callback:
-                progress_callback(ProcessingProgress(
-                    ProcessingStage.UPSCALING,
-                    0.0,
-                    "Starting upscaling"
-                ))
-                
-            with torch.cuda.stream(self.upscale_stream) if self.device == "cuda" else nullcontext():
-                # Choose the appropriate upscale model based on factor
-                if upscale_factor <= 2:
-                    model_type = 'upscale_x2'
-                elif upscale_factor <= 4:
-                    model_type = 'upscale_x4'
-                else:
-                    model_type = 'upscale_x8'
-                    
-                model = self._load_model(model_type)
-                processed_frames = upscale_batch_and_concatenate(
-                    model,
-                    processed_frames,
-                    self.device
-                )
-                
-                # If needed, do additional interpolation to reach exact factor
-                current_size = processed_frames.shape[2:]  # [height, width]
-                target_size = (
-                    int(frames.shape[2] * upscale_factor),
-                    int(frames.shape[3] * upscale_factor)
-                )
-                
-                if current_size != target_size:
-                    processed_frames = F.interpolate(
-                        processed_frames,
-                        size=target_size,
-                        mode='bicubic',
-                        align_corners=False
-                    )
-                
-                if progress_callback:
-                    progress_callback(ProcessingProgress(
-                        ProcessingStage.UPSCALING,
-                        1.0,
-                        "Upscaling complete"
-                    ))
+            # Ensure frames are in correct format [batch, channels, height, width]
+            if len(frames.shape) != 4:
+                raise ValueError(f"Expected tensor of shape [frames, channels, height, width], got shape {frames.shape}")
 
+            # Ensure frames are on the correct device and in the right format
+            frames = frames.to(device=self.varnish.processor.device, dtype=torch.float32)
+            frames = frames / 255.0 if frames.max() > 1.0 else frames
+
+            # Process video with Varnish - using await directly
+            result = await self.varnish(
+                input_data=frames,
+                input_fps=config.fps,
+                upscale_factor=config.upscale_factor if config.upscale_factor > 1 else None,
+                enable_interpolation=config.enable_interpolation,
+                output_fps=config.fps
+            )
+            
+            # Convert to data URI - using await directly
+            video_uri = await result.write(
+                output_type="data-uri",
+                output_format="mp4",
+                output_codec="h264",
+                output_quality=23
+            )
+            
+            # Collect metadata
+            metadata = {
+                "width": result.metadata.width,
+                "height": result.metadata.height,
+                "num_frames": result.metadata.frame_count,
+                "fps": result.metadata.fps,
+                "duration": result.metadata.duration,
+                "num_inference_steps": config.num_inference_steps,
+                "seed": config.seed,
+                "upscale_factor": config.upscale_factor,
+                "interpolation_enabled": config.enable_interpolation
+            }
+            
+            return video_uri, metadata
+
+        except Exception as e:
+            logger.error(f"Error in process_frames: {str(e)}")
+            raise RuntimeError(f"Failed to process frames: {str(e)}")
+    
 class VarnishResult:
     """Handle processed video results and output generation"""
     def __init__(
