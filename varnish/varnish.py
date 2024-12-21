@@ -498,7 +498,7 @@ class Varnish:
         input_fps: Optional[int] = 24,
         output_duration_in_sec: Optional[float] = None,
         output_fps: Optional[int] = None,
-        upscale_factor: Optional[float] = None,  # Add this instead of the old parameters
+        upscale_factor: Optional[float] = None,
         enable_interpolation: bool = False,
         grain_amount: float = 0.0,
         mmaudio_prompt: Optional[str] = None,
@@ -523,86 +523,69 @@ class Varnish:
         Returns:
             VarnishResult object containing processed video
         """
+        try:
+            if progress_callback:
+                progress_callback(ProcessingProgress(
+                    ProcessingStage.LOADING,
+                    0.0,
+                    "Loading input data"
+                ))
 
-        if progress_callback:
-            progress_callback(ProcessingProgress(
-                ProcessingStage.LOADING,
-                0.0,
-                "Loading input data"
-            ))
-
-        # Load input data
-        frames, metadata = await self._load_video(input_data, input_fps)
-        
-        # Update metadata with input parameters
-        if input_fps:
-            metadata.fps = input_fps
-            metadata.duration = metadata.frame_count / input_fps
-
-        # Calculate final duration after potential frame interpolation
-        final_fps = output_fps or metadata.fps
-        final_frame_count = frames.shape[0]
-        if enable_interpolation and output_fps:
-            final_frame_count *= (output_fps / metadata.fps)
-        final_duration = final_frame_count / final_fps
-
-        # Update MMAudio config if prompts provided
-        if mmaudio_prompt is not None:
-            self.processor.mmaudio_config.prompt = mmaudio_prompt
-        if mmaudio_negative_prompt is not None:
-            self.processor.mmaudio_config.negative_prompt = mmaudio_negative_prompt
-
-        # Process video and generate audio in parallel
-        async with asyncio.TaskGroup() as tg:
-            # Video processing task
-            video_task = tg.create_task(
-                self.processor.process_frames(
-                    frames,
-                    upscale_factor=upscale_factor,
-                    enable_interpolation=enable_interpolation,
-                    target_fps=output_fps,
-                    progress_callback=progress_callback
-                )
-            )
-            
-            # Audio generation task if enabled
-            audio_task = None
-            if self.processor.enable_mmaudio:
-                audio_task = tg.create_task(
-                    self.processor.generate_audio(
-                        frames,
-                        final_duration,
+            # Process video and generate audio in parallel
+            async with asyncio.TaskGroup() as tg:
+                # Video processing task
+                video_task = tg.create_task(
+                    self.processor.process_frames(
+                        frames=input_data,
+                        upscale_factor=upscale_factor,
+                        enable_interpolation=enable_interpolation,
+                        target_fps=output_fps,
                         progress_callback=progress_callback
                     )
                 )
+                
+                # Audio generation task if enabled
+                audio_task = None
+                if self.processor.enable_mmaudio:
+                    audio_task = tg.create_task(
+                        self.processor.generate_audio(
+                            input_data,
+                            output_duration_in_sec or (len(input_data) / (output_fps or input_fps)),
+                            progress_callback=progress_callback
+                        )
+                    )
 
-        # Get results from parallel processing
-        processed_frames = await video_task
-        audio_path = await audio_task if audio_task else None
+            # Get results from parallel processing
+            processed_frames, frames_metadata = await video_task
+            audio_path = await audio_task if audio_task else None
 
-        # Apply film grain if requested
-        if grain_amount > 0:
-            noise = torch.randn_like(processed_frames) * (grain_amount / 100.0)
-            processed_frames = torch.clamp(processed_frames + noise, 0, 1)
+            # Apply film grain if requested
+            if grain_amount > 0:
+                noise = torch.randn_like(processed_frames) * (grain_amount / 100.0)
+                processed_frames = torch.clamp(processed_frames + noise, 0, 1)
 
-        if progress_callback:
-            progress_callback(ProcessingProgress(
-                ProcessingStage.ENCODING,
-                1.0,
-                "Processing complete"
-            ))
+            if progress_callback:
+                progress_callback(ProcessingProgress(
+                    ProcessingStage.ENCODING,
+                    1.0,
+                    "Processing complete"
+                ))
 
-        return VarnishResult(
-            frames=processed_frames,
-            metadata=VideoMetadata(
-                width=processed_frames.shape[3],
-                height=processed_frames.shape[2],
-                fps=output_fps or metadata.fps,
-                duration=output_duration_in_sec or metadata.duration,
-                frame_count=processed_frames.shape[0]
-            ),
-            audio_path=audio_path
-        )
+            return VarnishResult(
+                frames=processed_frames,
+                metadata=VideoMetadata(
+                    width=processed_frames.shape[3],
+                    height=processed_frames.shape[2],
+                    fps=output_fps or input_fps,
+                    duration=output_duration_in_sec or (len(processed_frames) / (output_fps or input_fps)),
+                    frame_count=len(processed_frames)
+                ),
+                audio_path=audio_path
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing video: {str(e)}")
+            raise RuntimeError(f"Failed to process video: {str(e)}")
 
     async def _load_video(
         self,
