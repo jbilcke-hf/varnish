@@ -103,7 +103,7 @@ class VideoProcessor:
     def __init__(
         self,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        enable_mmaudio: bool = True,
+        enable_mmaudio: bool = False,
         mmaudio_config: Optional[MMAudioConfig] = None,
         model_base_dir: Optional[str] = None
     ):
