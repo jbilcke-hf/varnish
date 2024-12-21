@@ -43,6 +43,7 @@ from .debug_utils import verify_model_paths, log_directory_structure
 from pathlib import Path
 
 import logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Type definitions
