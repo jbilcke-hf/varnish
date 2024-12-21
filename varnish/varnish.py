@@ -46,6 +46,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# this is for mmaudio
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 # Type definitions
 PipelineImageInput = Union[
     str,  # File path or base64 data URI
