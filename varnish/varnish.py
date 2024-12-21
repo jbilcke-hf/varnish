@@ -38,9 +38,10 @@ from mmaudio.model.utils.features_utils import FeaturesUtils
 
 from .utils import load_sd_upscale, upscale_batch_and_concatenate
 from .rife_model import load_rife_model
+from .debug_utils import verify_model_paths, log_directory_structure
 
 from pathlib import Path
-from .debug_utils import verify_model_paths, log_directory_structure
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -241,15 +242,15 @@ class VideoProcessor:
                 ))
             
             # Generate audio
-            mmaudio_net = self._models['mmaudio']['net']
-            mmaudio_utils = self._models['mmaudio']['utils']
-            mmaudio_seq_cfg = self._models['mmaudio']['seq_cfg']
+            net = self._models['mmaudio']['net']
+            utils = self._models['mmaudio']['utils']
+            seq_cfg = self._models['mmaudio']['seq_cfg']
             
-            mmaudio_seq_cfg.duration = duration
-            mmaudio_net.update_seq_lengths(
-                mmaudio_seq_cfg.latent_seq_len,
-                mmaudio_seq_cfg.clip_seq_len,
-                mmaudio_seq_cfg.sync_seq_len
+            seq_cfg.duration = duration
+            net.update_seq_lengths(
+                seq_cfg.latent_seq_len,
+                seq_cfg.clip_seq_len,
+                seq_cfg.sync_seq_len
             )
             
             audios = generate(
@@ -257,8 +258,8 @@ class VideoProcessor:
                 None,  # sync frames
                 [self.mmaudio_config.prompt],
                 negative_text=[self.mmaudio_config.negative_prompt],
-                feature_utils=mmaudio_utils,
-                net=mmaudio_net,
+                feature_utils=utils,
+                net=net,
                 fm=fm,
                 rng=rng,
                 cfg_strength=self.mmaudio_config.cfg_strength
@@ -274,7 +275,7 @@ class VideoProcessor:
             # Save audio to temporary file
             audio = audios.float().cpu()[0]
             with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as tmp:
-                torchaudio.save(tmp.name, audio, mmaudio_seq_cfg.sampling_rate)
+                torchaudio.save(tmp.name, audio, seq_cfg.sampling_rate)
                 if progress_callback:
                     progress_callback(ProcessingProgress(
                         ProcessingStage.AUDIO_GENERATION,
@@ -313,7 +314,7 @@ class VideoProcessor:
                     model_type = 'upscale_x8'
                     
                 model = self._load_model(model_type)
-                processed_frames = upscale_batch_and_concatenate(
+                processed_frames = utils.upscale_batch_and_concatenate(
                     model,
                     processed_frames,
                     self.device
