@@ -1,5 +1,6 @@
 import math
 from typing import Union, List
+
 import torch
 import os
 from datetime import datetime
@@ -154,81 +155,44 @@ def load_sd_upscale(ckpt, inf_device):
 
 
 def upscale(upscale_model, tensor: torch.Tensor, inf_device, output_device="cpu") -> torch.Tensor:
-    """Upscale a tensor using the provided model.
-    
-    Args:
-        upscale_model: The upscaling model to use
-        tensor: Input tensor of shape [F,C,H,W] where F can be batch or frames
-        inf_device: Device to run inference on
-        output_device: Device for output tensor
-        
-    Returns:
-        Upscaled tensor
-    """
-    logger.info(f"Upscaling tensor of shape: {tensor.shape}")
-    
     memory_required = module_size(upscale_model.model)
     memory_required += (
         (512 * 512 * 3) * tensor.element_size() * max(upscale_model.scale, 1.0) * 384.0
-    )
+    )  # The 384.0 is an estimate of how much some of these models take, TODO: make it more accurate
     memory_required += tensor.nelement() * tensor.element_size()
-    logger.info(f"UPScaleMemory required: {memory_required / 1024 / 1024 / 1024} GB")
+    print(f"UPScaleMemory required: {memory_required / 1024 / 1024 / 1024} GB")
 
     upscale_model.to(inf_device)
     tile = 512
     overlap = 32
 
-    # tensor.shape = [F,C,H,W] so we use indices 2 and 3 for height and width
     steps = tensor.shape[0] * get_tiled_scale_steps(
-        tensor.shape[3],  # Width is last dimension
-        tensor.shape[2],  # Height is second to last
-        tile_x=tile,
-        tile_y=tile,
-        overlap=overlap
+        tensor.shape[3], tensor.shape[2], tile_x=tile, tile_y=tile, overlap=overlap
     )
 
     pbar = ProgressBar(steps, desc="Tiling and Upscaling")
 
-    try:
-        s = tiled_scale(
-            samples=tensor.to(torch.float16),
-            function=lambda a: upscale_model(a),
-            tile_x=tile,
-            tile_y=tile,
-            overlap=overlap,
-            upscale_amount=upscale_model.scale,
-            pbar=pbar
-        )
-    finally:
-        upscale_model.to(output_device)
-    
+    s = tiled_scale(
+        samples=tensor.to(torch.float16),
+        function=lambda a: upscale_model(a),
+        tile_x=tile,
+        tile_y=tile,
+        overlap=overlap,
+        upscale_amount=upscale_model.scale,
+        pbar=pbar,
+    )
+
+    upscale_model.to(output_device)
     return s
 
+
 def upscale_batch_and_concatenate(upscale_model, latents, inf_device, output_device="cpu") -> torch.Tensor:
-    """Process frames individually for upscaling to manage memory usage.
-    
-    Args:
-        upscale_model: The upscaling model to use
-        latents: Input tensor of shape [F,C,H,W] where F is number of frames
-        inf_device: Device to run inference on
-        output_device: Device for output tensor
-        
-    Returns:
-        Upscaled tensor with shape [F,C,H*scale,W*scale]
-    """
-    logger.info(f"Processing latents shape: {latents.shape}")
-    
     upscaled_latents = []
     for i in range(latents.size(0)):
-        logger.info(f"Processing frame {i+1}/{latents.size(0)}")
-        # Process one frame at a time for memory efficiency
-        latent = latents[i:i+1]  # Keep dimensions as [1,C,H,W]
+        latent = latents[i]
         upscaled_latent = upscale(upscale_model, latent, inf_device, output_device)
         upscaled_latents.append(upscaled_latent)
-    
-    result = torch.cat(upscaled_latents, dim=0)
-    logger.info(f"Final upscaled shape: {result.shape}")
-    return result
+    return torch.stack(upscaled_latents)
 
 
 def save_video(tensor: Union[List[np.ndarray], List[PIL.Image.Image]], fps: int = 8):
