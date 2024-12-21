@@ -197,15 +197,18 @@ class VideoProcessor:
         """Resize frames to have max 384px on shortest side for MMAudio"""
         _, _, height, width = frames.shape
         
-        if min(height, width) <= 384:
+        # in the MMAudio doc they say there is no point to use an image > 384px (on the smallest side)
+        max_side_res_for_mmaudio = 384
+
+        if min(height, width) <= max_side_res_for_mmaudio:
             return frames
             
         if width < height:
-            new_width = 384
-            new_height = int((height * 384) / width)
+            new_width = max_side_res_for_mmaudio
+            new_height = int((height * max_side_res_for_mmaudio) / width)
         else:
-            new_height = 384
-            new_width = int((width * 384) / height)
+            new_height = max_side_res_for_mmaudio
+            new_width = int((width * max_side_res_for_mmaudio) / height)
             
         return F.interpolate(
             frames,
