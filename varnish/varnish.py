@@ -155,7 +155,10 @@ class VideoProcessor:
             
             seq_cfg = model.seq_cfg
             net: MMAudio = get_my_mmaudio(model.model_name).to(self.device, torch.bfloat16).eval()
-            net.load_weights(torch.load(model.model_path, map_location=self.device, weights_only=True))
+
+            # weights_only=False because of this error:
+            # WeightsUnpickler error: Unsupported operand 60
+            net.load_weights(torch.load(model.model_path, map_location=self.device, weights_only=False))
             
             feature_utils = FeaturesUtils(
                 tod_vae_ckpt=model.vae_path,
