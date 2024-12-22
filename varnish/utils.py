@@ -164,14 +164,14 @@ def upscale(upscale_model, tensor: torch.Tensor, inf_device, output_device="cpu"
     Returns:
         Upscaled tensor
     """
-    logger.info(f"Upscaling tensor of shape: {tensor.shape}")
+    logger.debug(f"Upscaling tensor of shape: {tensor.shape}")
     
     memory_required = module_size(upscale_model.model)
     memory_required += (
         (512 * 512 * 3) * tensor.element_size() * max(upscale_model.scale, 1.0) * 384.0
     )
     memory_required += tensor.nelement() * tensor.element_size()
-    logger.info(f"UPScaleMemory required: {memory_required / 1024 / 1024 / 1024} GB")
+    logger.debug(f"UPScaleMemory required: {memory_required / 1024 / 1024 / 1024} GB")
 
     upscale_model.to(inf_device)
     tile = 512
