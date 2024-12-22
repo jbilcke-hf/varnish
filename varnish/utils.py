@@ -217,18 +217,18 @@ def upscale_batch_and_concatenate(upscale_model, latents, inf_device, output_dev
     Returns:
         Upscaled tensor with shape [F,C,H*scale,W*scale]
     """
-    logger.info(f"Processing latents shape: {latents.shape}")
+    logger.debug(f"Processing latents shape: {latents.shape}")
     
     upscaled_latents = []
     for i in range(latents.size(0)):
-        logger.info(f"Processing frame {i+1}/{latents.size(0)}")
+        logger.debug(f"Processing frame {i+1}/{latents.size(0)}")
         # Process one frame at a time for memory efficiency
         latent = latents[i:i+1]  # Keep dimensions as [1,C,H,W]
         upscaled_latent = upscale(upscale_model, latent, inf_device, output_device)
         upscaled_latents.append(upscaled_latent)
     
     result = torch.cat(upscaled_latents, dim=0)
-    logger.info(f"Final upscaled shape: {result.shape}")
+    logger.debug(f"Final upscaled shape: {result.shape}")
     return result
 
 class ProgressBar:
