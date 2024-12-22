@@ -571,7 +571,9 @@ class Varnish:
         
         Args:
             input_data: Input video or image sequence
-             <PUT CODE HERE>
+            fps (optional, int, default to 24): number of frames per second
+            double_num_frames (optional, bool, default to True): whether to double the number of FPS or no
+            super_resolution (optional, bool, default to True): whether to double the resolution or not
             grain_amount: Amount of film grain to add (0-100)
             enable_audio (optional, bool): Whether to automatically generate an audio soundtrack
             audio_prompt (optional, str): Text prompt for audio generation
