@@ -29,7 +29,7 @@ classifiers = [
 ]
 
 dependencies = [
-    'torch==2.4.0',
+    'torch',
     'torchvision',
     'torchaudio',
     'numpy>=1.26.0,<2.1',
