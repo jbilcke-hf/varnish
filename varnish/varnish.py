@@ -423,7 +423,7 @@ class VarnishResult:
         if type == "file" and not filename:
             raise ValueError("filename is required for file output type")
 
-        logger.info(f"Input frames tensor shape: {self.frames.shape}")
+        logger.debug(f"Input frames tensor shape: {self.frames.shape}")
 
         # Reshape frames if needed
         frames = self.frames
@@ -432,7 +432,7 @@ class VarnishResult:
         
         # Convert frames to numpy for PyAV
         frames_np = (frames.cpu().numpy() * 255).astype(np.uint8)
-        logger.info(f"Numpy array shape after conversion: {frames_np.shape}")
+        logger.debug(f"Numpy array shape after conversion: {frames_np.shape}")
 
         # Handle different tensor formats
         if len(frames_np.shape) == 4:  # BCHW format
@@ -443,7 +443,7 @@ class VarnishResult:
         else:
             raise ValueError(f"Unexpected frame tensor shape after preprocessing: {frames_np.shape}")
 
-        logger.info(f"Numpy array shape after transpose: {frames_np.shape}")
+        logger.debug(f"Numpy array shape after transpose: {frames_np.shape}")
 
         # Create temporary file if needed
         if not self._temp_file:
@@ -461,7 +461,7 @@ class VarnishResult:
             stream.height = frames_np.shape[1]  # Height is the second dimension after transpose
             stream.pix_fmt = 'yuv420p'
             
-            logger.info(f"Creating video stream with dimensions: {stream.width}x{stream.height}")
+            logger.debug(f"Creating video stream with dimensions: {stream.width}x{stream.height}")
             
             # Set quality/bitrate
             if bitrate:
