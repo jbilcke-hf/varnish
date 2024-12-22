@@ -37,7 +37,7 @@ from mmaudio.model.sequence_config import SequenceConfig
 from mmaudio.model.utils.features_utils import FeaturesUtils
 
 from .utils import load_sd_upscale, upscale_batch_and_concatenate
-from .rife_model import load_rife_model
+from .rife_model import load_rife_model, rife_inference_with_latents
 from .debug_utils import verify_model_paths, log_directory_structure
 
 from pathlib import Path
