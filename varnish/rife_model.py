@@ -15,15 +15,39 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def pad_image(img, scale):
-    _, _, h, w = img.shape
-    tmp = max(32, int(32 / scale))
-    ph = ((h - 1) // tmp + 1) * tmp
-    pw = ((w - 1) // tmp + 1) * tmp
-    padding = (0, 0, pw - w, ph - h)
+    """Pad image to be divisible by scale.
+    Args:
+        img: Input tensor of shape [B,C,H,W] or [C,H,W]
+        scale: Scale factor
+    Returns:
+        Padded tensor
+    """
+    if len(img.shape) == 3:
+        c, h, w = img.shape
+        tmp = max(32, int(32 / scale))
+        ph = ((h - 1) // tmp + 1) * tmp
+        pw = ((w - 1) // tmp + 1) * tmp
+        padding = (0, pw - w, 0, ph - h)
+    else:
+        _, _, h, w = img.shape
+        tmp = max(32, int(32 / scale))
+        ph = ((h - 1) // tmp + 1) * tmp
+        pw = ((w - 1) // tmp + 1) * tmp
+        padding = (0, 0, pw - w, ph - h)
     return F.pad(img, padding)
 
 
 def make_inference(model, I0, I1, upscale_amount, n):
+    """Make recursive frame interpolation inference.
+    Args:
+        model: RIFE model
+        I0, I1: Input frames
+        upscale_amount: Upscale factor
+        n: Number of frames to generate
+    Returns:
+        List of interpolated frames
+    """
+    logger.debug(f"Making inference between frames of shapes {I0.shape} and {I1.shape}")
     middle = model.inference(I0, I1, upscale_amount)
     if n == 1:
         return [middle]
@@ -37,22 +61,42 @@ def make_inference(model, I0, I1, upscale_amount, n):
 
 @torch.inference_mode()
 def ssim_interpolation_rife(model, samples, exp=1, upscale_amount=1, output_device="cpu"):
+    """Interpolate frames using RIFE model with SSIM-based frame similarity check.
+    Args:
+        model: RIFE model
+        samples: Input tensor of shape [B,C,H,W] or [C,H,W]
+        exp: Exponent for number of frames to generate
+        upscale_amount: Upscale factor
+        output_device: Device to place output tensors on
+    Returns:
+        List of interpolated frames
+    """
+    logger.debug(f"Input samples shape: {samples.shape}")
+    
+    # Handle 3D input by adding batch dimension
+    if len(samples.shape) == 3:
+        samples = samples.unsqueeze(0)
+        logger.debug(f"Added batch dimension, new shape: {samples.shape}")
 
     output = []
-    # [f, c, h, w]
+    # Process frames
     for b in range(samples.shape[0]):
-        frame = samples[b : b + 1]
-        _, _, h, w = frame.shape
-        I0 = samples[b : b + 1]
-        I1 = samples[b + 1 : b + 2] if b + 2 < samples.shape[0] else samples[-1:]
+        frame = samples[b:b + 1]
+        logger.debug(f"Processing frame {b} with shape: {frame.shape}")
+        
+        I0 = samples[b:b + 1]
+        I1 = samples[b + 1:b + 2] if b + 2 < samples.shape[0] else samples[-1:]
         I1 = pad_image(I1, upscale_amount)
-        # [c, h, w]
+
+        # Resize for SSIM comparison
         I0_small = F.interpolate(I0, (32, 32), mode="bilinear", align_corners=False)
         I1_small = F.interpolate(I1, (32, 32), mode="bilinear", align_corners=False)
 
         ssim = ssim_matlab(I0_small[:, :3], I1_small[:, :3])
+        logger.debug(f"SSIM between frames: {ssim}")
 
         if ssim > 0.996:
+            logger.debug("High SSIM detected, using duplicate frame")
             I1 = I0
             I1 = pad_image(I1, upscale_amount)
             I1 = make_inference(model, I0, I1, upscale_amount, 1)
@@ -64,9 +108,9 @@ def ssim_interpolation_rife(model, samples, exp=1, upscale_amount=1, output_devi
 
         tmp_output = []
         if ssim < 0.2:
+            logger.debug("Low SSIM detected, duplicating frames")
             for i in range((2**exp) - 1):
                 tmp_output.append(I0)
-
         else:
             tmp_output = make_inference(model, I0, I1, upscale_amount, 2**exp - 1) if exp else []
 
@@ -74,8 +118,9 @@ def ssim_interpolation_rife(model, samples, exp=1, upscale_amount=1, output_devi
         tmp_output = [frame] + tmp_output
         for i, frame in enumerate(tmp_output):
             output.append(frame.to(output_device))
+            
+    logger.debug(f"Final output length: {len(output)}")
     return output
-
 
 def load_rife_model(model_path):
     model = Model()
@@ -118,13 +163,30 @@ def rife_inference_with_path(model, video_path):
 
 
 def rife_inference_with_latents(model, latents):
+    """Run RIFE inference on latent tensors.
+    Args:
+        model: RIFE model
+        latents: Input tensor of shape [B,F,C,H,W] or [F,C,H,W]
+    Returns:
+        Interpolated frames tensor
+    """
+    logger.debug(f"Input latents shape: {latents.shape}")
     rife_results = []
     latents = latents.to(device)
+    
+    # Handle case where batch dimension is missing
+    if len(latents.shape) == 4:
+        latents = latents.unsqueeze(0)
+        logger.debug(f"Added batch dimension, new shape: {latents.shape}")
+        
     for i in range(latents.size(0)):
-        #  [f, c, w, h]
         latent = latents[i]
+        logger.debug(f"Processing batch {i}, latent shape: {latent.shape}")
         frames = ssim_interpolation_rife(model, latent)
-        pt_image = torch.stack([frames[i].squeeze(0) for i in range(len(frames))])  # (to [f, c, w, h])
+        pt_image = torch.stack([frames[i].squeeze(0) for i in range(len(frames))])
         rife_results.append(pt_image)
+        logger.debug(f"Processed batch {i}, output shape: {pt_image.shape}")
 
-    return torch.stack(rife_results)
+    result = torch.stack(rife_results)
+    logger.debug(f"Final output shape: {result.shape}")
+    return result
