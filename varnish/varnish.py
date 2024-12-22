@@ -412,16 +412,16 @@ class VarnishResult:
 
     async def write(
         self,
-        output_type: OutputType,
-        output_filename: Optional[str] = None,
-        output_format: str = "mp4",
-        output_codec: str = "h264",
-        output_quality: int = 23,
-        output_bitrate: Optional[str] = None,
+        type: OutputType,
+        filename: Optional[str] = None,
+        format: str = "mp4",
+        codec: str = "h264",
+        quality: int = 23,
+        bitrate: Optional[str] = None,
     ) -> Union[str, bytes, bool]:
         """Write processed video to specified format using PyAV"""
-        if output_type == "file" and not output_filename:
-            raise ValueError("output_filename is required for file output type")
+        if type == "file" and not filename:
+            raise ValueError("filename is required for file output type")
 
         # Convert frames to numpy for PyAV
         frames_np = (self.frames.cpu().numpy() * 255).astype(np.uint8)
@@ -429,7 +429,7 @@ class VarnishResult:
 
         # Create temporary file if needed
         if not self._temp_file:
-            with tempfile.NamedTemporaryFile(suffix=f".{output_format}", delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(suffix=f".{format}", delete=False) as tmp:
                 self._temp_file = tmp.name
 
         # Open output container
@@ -437,22 +437,22 @@ class VarnishResult:
         
         try:
             # Add video stream
-            stream = output.add_stream(output_codec, rate=self.metadata.fps)
+            stream = output.add_stream(codec, rate=self.metadata.fps)
             stream.width = self.metadata.width
             stream.height = self.metadata.height
             stream.pix_fmt = 'yuv420p'
             
             # Set quality/bitrate
-            if output_bitrate:
+            if bitrate:
                 # Convert string bitrate (e.g., "5M") to bits per second
                 multiplier = {'k': 1000, 'K': 1000, 'm': 1000000, 'M': 1000000}
-                number = float(re.match(r'(\d+)', output_bitrate).group(1))
-                unit = output_bitrate[-1] if output_bitrate[-1] in multiplier else ''
+                number = float(re.match(r'(\d+)', bitrate).group(1))
+                unit = bitrate[-1] if bitrate[-1] in multiplier else ''
                 bitrate = int(number * multiplier.get(unit, 1))
                 stream.bit_rate = bitrate
             else:
                 # Use quality-based encoding
-                stream.options = {'crf': str(output_quality)}
+                stream.options = {'crf': str(quality)}
 
             # Add audio stream if available
             audio_stream = None
@@ -480,10 +480,10 @@ class VarnishResult:
         finally:
             output.close()
 
-        if output_type == "file":
-            os.rename(self._temp_file, output_filename)
+        if type == "file":
+            os.rename(self._temp_file, filename)
             return True
-        elif output_type == "data-uri":
+        elif type == "data-uri":
             with open(self._temp_file, "rb") as f:
                 video_bytes = f.read()
             return f"data:video/mp4;base64,{base64.b64encode(video_bytes).decode()}"
@@ -503,9 +503,9 @@ class Varnish:
     def __init__(
         self,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        output_format: str = "mp4",
-        output_codec: str = "h264",
-        output_quality: int = 23,
+        format: str = "mp4",
+        codec: str = "h264",
+        quality: int = 23,
         enable_mmaudio: bool = True,
         mmaudio_config: Optional[MMAudioConfig] = None,
         model_base_dir: Optional[str] = None,
@@ -516,9 +516,9 @@ class Varnish:
             mmaudio_config=mmaudio_config,
             model_base_dir=model_base_dir,
         )
-        self.default_output_format = output_format
-        self.default_output_codec = output_codec
-        self.default_output_quality = output_quality
+        self.default_format = format
+        self.default_codec = codec
+        self.default_quality = quality
     
     def clean_frames(
         self,
