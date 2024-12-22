@@ -1,21 +1,41 @@
 import torch
 import torch.nn.functional as F
+import logging
+
+logger = logging.getLogger(__name__)
 
 def apply_film_grain(frames: torch.Tensor, grain_amount: float = 0.0) -> torch.Tensor:
     """Apply realistic film grain effect to frames.
     
     Args:
-        frames: Input tensor of shape [B,C,H,W] in range [0,1]
+        frames: Input tensor in range [0,1], can be:
+               - [B,C,H,W] (batch of frames)
+               - [C,H,W] (single frame)
+               - [N,B,C,H,W] (batched sequence)
         grain_amount: Amount of grain to apply (0-100)
         
     Returns:
-        Processed frames tensor with film grain
+        Processed frames tensor with film grain in same format as input
     """
     if grain_amount <= 0:
         return frames
         
     device = frames.device
+    orig_shape = frames.shape
+    
+    # Handle different input shapes
+    if len(orig_shape) == 3:  # Single frame [C,H,W]
+        frames = frames.unsqueeze(0)  # Add batch dim [1,C,H,W]
+    elif len(orig_shape) == 5:  # Batched sequence [N,B,C,H,W]
+        # Flatten first two dimensions
+        frames = frames.reshape(-1, *orig_shape[2:])
+    
+    # Now we should have [B,C,H,W]
+    if len(frames.shape) != 4:
+        raise ValueError(f"Unexpected tensor shape after preprocessing: {frames.shape}")
+        
     B, C, H, W = frames.shape
+    logger.debug(f"Processing grain on tensor shape: {frames.shape}")
     
     # Scale grain_amount from 0-100 to reasonable working range
     grain_intensity = grain_amount / 400.0  # Scaled down to prevent overwhelming effect
@@ -57,4 +77,11 @@ def apply_film_grain(frames: torch.Tensor, grain_amount: float = 0.0) -> torch.T
     frames_out = (frames_out - 0.5) * contrast + 0.5
     frames_out = torch.clamp(frames_out, 0.0, 1.0)
     
+    # Restore original shape
+    if len(orig_shape) == 3:  # Was single frame
+        frames_out = frames_out.squeeze(0)
+    elif len(orig_shape) == 5:  # Was batched sequence
+        frames_out = frames_out.reshape(orig_shape)
+        
+    logger.debug(f"Output grain tensor shape: {frames_out.shape}")
     return frames_out
