@@ -436,9 +436,10 @@ class VarnishResult:
 
         # Handle different tensor formats
         if len(frames_np.shape) == 4:  # BCHW format
-            frames_np = frames_np.transpose(0, 2, 3, 1)  # Convert to BHWC
+            # Convert BCHW to BHWC, maintaining the correct width/height order
+            frames_np = frames_np.transpose(0, 2, 3, 1)  # B, H, W, C
         elif len(frames_np.shape) == 3:  # CHW format
-            frames_np = frames_np.transpose(1, 2, 0)  # Convert to HWC
+            frames_np = frames_np.transpose(1, 2, 0)  # H, W, C
         else:
             raise ValueError(f"Unexpected frame tensor shape after preprocessing: {frames_np.shape}")
 
@@ -453,22 +454,23 @@ class VarnishResult:
         output = av.open(self._temp_file, mode='w')
         
         try:
-            # Add video stream
+            # Add video stream with explicitly set dimensions
             stream = output.add_stream(codec, rate=self.metadata.fps)
-            stream.width = self.metadata.width
-            stream.height = self.metadata.height
+            # Ensure width and height are correctly set from the frame dimensions
+            stream.width = frames_np.shape[2]  # Width is the third dimension after transpose
+            stream.height = frames_np.shape[1]  # Height is the second dimension after transpose
             stream.pix_fmt = 'yuv420p'
+            
+            logger.info(f"Creating video stream with dimensions: {stream.width}x{stream.height}")
             
             # Set quality/bitrate
             if bitrate:
-                # Convert string bitrate (e.g., "5M") to bits per second
                 multiplier = {'k': 1000, 'K': 1000, 'm': 1000000, 'M': 1000000}
                 number = float(re.match(r'(\d+)', bitrate).group(1))
                 unit = bitrate[-1] if bitrate[-1] in multiplier else ''
                 bitrate = int(number * multiplier.get(unit, 1))
                 stream.bit_rate = bitrate
             else:
-                # Use quality-based encoding
                 stream.options = {'crf': str(quality)}
 
             # Add audio stream if available
