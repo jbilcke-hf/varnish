@@ -1,8 +1,10 @@
 # /!\ important: dependencies are actually inside pyproject.toml
 
 # Core dependencies
-torch>=2.5.1
-torchvision>=0.16.0
+torch == 2.4.0
+torchvision
+torchaudio
+
 numpy
 Pillow==9.5.0
 
@@ -24,7 +26,6 @@ huggingface_hub>=0.26
 
 # Audio processing
 librosa>=0.8.1
-torchaudio>=2.2.0
 
 # Utilities
 tqdm>=4.66.5

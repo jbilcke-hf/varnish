@@ -29,8 +29,9 @@ classifiers = [
 ]
 
 dependencies = [
-    'torch>=2.5.1',
-    'torchvision>=0.16.0',
+    'torch==2.4.0',
+    'torchvision',
+    'torchaudio',
     'numpy>=1.26.0,<2.1',
     'Pillow==9.5.0',
     'opencv-python>=4.10.0.84',
@@ -46,7 +47,6 @@ dependencies = [
     'mmaudio @ git+https://github.com/hkchengrex/MMAudio.git@45f44e067c6451d5e646b494bc962724882c003c',
     'huggingface_hub>=0.26',
     'librosa>=0.8.1',
-    'torchaudio>=2.2.0',
     'tqdm>=4.66.5',
     'einops>=0.6',
     'hydra-core>=1.3.2',
