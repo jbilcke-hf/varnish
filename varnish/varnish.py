@@ -423,9 +423,21 @@ class VarnishResult:
         if type == "file" and not filename:
             raise ValueError("filename is required for file output type")
 
+        logger.info(f"Input frames tensor shape: {self.frames.shape}")
+
         # Convert frames to numpy for PyAV
         frames_np = (self.frames.cpu().numpy() * 255).astype(np.uint8)
-        frames_np = frames_np.transpose(0, 2, 3, 1)  # Convert from BCHW to BHWC
+        logger.info(f"Numpy array shape after conversion: {frames_np.shape}")
+
+        # Handle different tensor formats
+        if len(frames_np.shape) == 4:  # BCHW format
+            frames_np = frames_np.transpose(0, 2, 3, 1)  # Convert to BHWC
+        elif len(frames_np.shape) == 3:  # CHW format
+            frames_np = frames_np.transpose(1, 2, 0)  # Convert to HWC
+        else:
+            raise ValueError(f"Unexpected frame tensor shape: {frames_np.shape}")
+
+        logger.info(f"Numpy array shape after transpose: {frames_np.shape}")
 
         # Create temporary file if needed
         if not self._temp_file:
