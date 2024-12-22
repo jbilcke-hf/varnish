@@ -371,8 +371,7 @@ class VideoProcessor:
                     frames = await asyncio.to_thread(
                         rife_inference_with_latents,
                         rife_model,
-                        frames,
-                        target_fps
+                        frames
                     )
                     
                     if progress_callback:
