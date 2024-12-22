@@ -129,7 +129,9 @@ class VideoProcessor:
             'upscale_x4': "real_esrgan/RealESRGAN_x4.pth",
             'upscale_x8': "real_esrgan/RealESRGAN_x8.pth",
             'mmaudio': "mmaudio",
-            'rife': "rife/rife-flownet-4.13.2.safetensors"
+
+            # 'rife': "rife/rife-flownet-4.13.2.safetensors"
+            'rife': "rife"
         }
         
         # Verify and convert to absolute paths
