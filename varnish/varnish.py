@@ -39,6 +39,7 @@ from mmaudio.model.utils.features_utils import FeaturesUtils
 from .utils import load_sd_upscale, upscale_batch_and_concatenate
 from .rife_model import load_rife_model, rife_inference_with_latents
 from .debug_utils import verify_model_paths, log_directory_structure
+from .film_grain import apply_film_grain
 
 from pathlib import Path
 
@@ -630,8 +631,7 @@ class Varnish:
 
             # Apply film grain if requested
             if grain_amount > 0:
-                noise = torch.randn_like(processed_frames) * (grain_amount / 100.0)
-                processed_frames = torch.clamp(processed_frames + noise, 0, 1)
+                processed_frames = apply_film_grain(processed_frames, grain_amount)
 
             if progress_callback:
                 progress_callback(ProcessingProgress(
