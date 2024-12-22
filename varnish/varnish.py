@@ -411,97 +411,102 @@ class VarnishResult:
         self._temp_file = temp_file
 
     async def write(
-        self,
-        type: OutputType,
-        filename: Optional[str] = None,
-        format: str = "mp4",
-        codec: str = "h264",
-        quality: int = 23,
-        bitrate: Optional[str] = None,
-    ) -> Union[str, bytes, bool]:
-        """Write processed video to specified format using PyAV"""
-        if type == "file" and not filename:
-            raise ValueError("filename is required for file output type")
+    self,
+    type: OutputType,
+    filename: Optional[str] = None,
+    format: str = "mp4",
+    codec: str = "h264",
+    quality: int = 23,
+    bitrate: Optional[str] = None,
+) -> Union[str, bytes, bool]:
+    """Write processed video to specified format using PyAV"""
+    if type == "file" and not filename:
+        raise ValueError("filename is required for file output type")
 
-        logger.info(f"Input frames tensor shape: {self.frames.shape}")
+    logger.info(f"Input frames tensor shape: {self.frames.shape}")
 
-        # Convert frames to numpy for PyAV
-        frames_np = (self.frames.cpu().numpy() * 255).astype(np.uint8)
-        logger.info(f"Numpy array shape after conversion: {frames_np.shape}")
+    # Reshape frames if needed
+    frames = self.frames
+    if len(frames.shape) == 5:  # NBCHW format
+        frames = frames.squeeze(0)  # Remove batch dimension
+    
+    # Convert frames to numpy for PyAV
+    frames_np = (frames.cpu().numpy() * 255).astype(np.uint8)
+    logger.info(f"Numpy array shape after conversion: {frames_np.shape}")
 
-        # Handle different tensor formats
-        if len(frames_np.shape) == 4:  # BCHW format
-            frames_np = frames_np.transpose(0, 2, 3, 1)  # Convert to BHWC
-        elif len(frames_np.shape) == 3:  # CHW format
-            frames_np = frames_np.transpose(1, 2, 0)  # Convert to HWC
-        else:
-            raise ValueError(f"Unexpected frame tensor shape: {frames_np.shape}")
+    # Handle different tensor formats
+    if len(frames_np.shape) == 4:  # BCHW format
+        frames_np = frames_np.transpose(0, 2, 3, 1)  # Convert to BHWC
+    elif len(frames_np.shape) == 3:  # CHW format
+        frames_np = frames_np.transpose(1, 2, 0)  # Convert to HWC
+    else:
+        raise ValueError(f"Unexpected frame tensor shape after preprocessing: {frames_np.shape}")
 
-        logger.info(f"Numpy array shape after transpose: {frames_np.shape}")
+    logger.info(f"Numpy array shape after transpose: {frames_np.shape}")
 
-        # Create temporary file if needed
-        if not self._temp_file:
-            with tempfile.NamedTemporaryFile(suffix=f".{format}", delete=False) as tmp:
-                self._temp_file = tmp.name
+    # Create temporary file if needed
+    if not self._temp_file:
+        with tempfile.NamedTemporaryFile(suffix=f".{format}", delete=False) as tmp:
+            self._temp_file = tmp.name
 
-        # Open output container
-        output = av.open(self._temp_file, mode='w')
+    # Open output container
+    output = av.open(self._temp_file, mode='w')
+    
+    try:
+        # Add video stream
+        stream = output.add_stream(codec, rate=self.metadata.fps)
+        stream.width = self.metadata.width
+        stream.height = self.metadata.height
+        stream.pix_fmt = 'yuv420p'
         
-        try:
-            # Add video stream
-            stream = output.add_stream(codec, rate=self.metadata.fps)
-            stream.width = self.metadata.width
-            stream.height = self.metadata.height
-            stream.pix_fmt = 'yuv420p'
-            
-            # Set quality/bitrate
-            if bitrate:
-                # Convert string bitrate (e.g., "5M") to bits per second
-                multiplier = {'k': 1000, 'K': 1000, 'm': 1000000, 'M': 1000000}
-                number = float(re.match(r'(\d+)', bitrate).group(1))
-                unit = bitrate[-1] if bitrate[-1] in multiplier else ''
-                bitrate = int(number * multiplier.get(unit, 1))
-                stream.bit_rate = bitrate
-            else:
-                # Use quality-based encoding
-                stream.options = {'crf': str(quality)}
+        # Set quality/bitrate
+        if bitrate:
+            # Convert string bitrate (e.g., "5M") to bits per second
+            multiplier = {'k': 1000, 'K': 1000, 'm': 1000000, 'M': 1000000}
+            number = float(re.match(r'(\d+)', bitrate).group(1))
+            unit = bitrate[-1] if bitrate[-1] in multiplier else ''
+            bitrate = int(number * multiplier.get(unit, 1))
+            stream.bit_rate = bitrate
+        else:
+            # Use quality-based encoding
+            stream.options = {'crf': str(quality)}
 
-            # Add audio stream if available
-            audio_stream = None
-            if self.audio_path:
-                audio_container = av.open(self.audio_path)
-                audio_stream = output.add_stream(template=audio_container.streams.audio[0])
+        # Add audio stream if available
+        audio_stream = None
+        if self.audio_path:
+            audio_container = av.open(self.audio_path)
+            audio_stream = output.add_stream(template=audio_container.streams.audio[0])
 
-            # Write video frames
-            for frame_idx, frame_data in enumerate(frames_np):
-                frame = av.VideoFrame.from_ndarray(frame_data, format='rgb24')
-                packet = stream.encode(frame)
-                output.mux(packet)
-
-            # Flush video stream
-            packet = stream.encode(None)
+        # Write video frames
+        for frame_idx, frame_data in enumerate(frames_np):
+            frame = av.VideoFrame.from_ndarray(frame_data, format='rgb24')
+            packet = stream.encode(frame)
             output.mux(packet)
 
-            # Copy audio if available
-            if audio_stream and self.audio_path:
-                for packet in audio_container.demux():
-                    if packet.dts is not None:
-                        output.mux(packet)
-                audio_container.close()
+        # Flush video stream
+        packet = stream.encode(None)
+        output.mux(packet)
 
-        finally:
-            output.close()
+        # Copy audio if available
+        if audio_stream and self.audio_path:
+            for packet in audio_container.demux():
+                if packet.dts is not None:
+                    output.mux(packet)
+            audio_container.close()
 
-        if type == "file":
-            os.rename(self._temp_file, filename)
-            return True
-        elif type == "data-uri":
-            with open(self._temp_file, "rb") as f:
-                video_bytes = f.read()
-            return f"data:video/mp4;base64,{base64.b64encode(video_bytes).decode()}"
-        else:  # binary
-            with open(self._temp_file, "rb") as f:
-                return f.read()
+    finally:
+        output.close()
+
+    if type == "file":
+        os.rename(self._temp_file, filename)
+        return True
+    elif type == "data-uri":
+        with open(self._temp_file, "rb") as f:
+            video_bytes = f.read()
+        return f"data:video/mp4;base64,{base64.b64encode(video_bytes).decode()}"
+    else:  # binary
+        with open(self._temp_file, "rb") as f:
+            return f.read()
 
     def __del__(self):
         """Cleanup temporary files"""
