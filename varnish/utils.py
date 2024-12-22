@@ -75,7 +75,7 @@ def tiled_scale_multidim(
     samples, function, tile=(64, 64), overlap=8, upscale_amount=4, out_channels=3, output_device="cpu", pbar=None
 ):
     dims = len(tile)
-    print(f"samples dtype:{samples.dtype}")
+    #print(f"samples dtype:{samples.dtype}")
     output = torch.empty(
         [samples.shape[0], out_channels] + list(map(lambda a: round(a * upscale_amount), samples.shape[2:])),
         device=output_device,
@@ -186,7 +186,9 @@ def upscale(upscale_model, tensor: torch.Tensor, inf_device, output_device="cpu"
         overlap=overlap
     )
 
-    pbar = ProgressBar(steps, desc="Tiling and Upscaling")
+    # we hide the progressbar otherwise it bloats the logs
+    #pbar = ProgressBar(steps, desc="Tiling and Upscaling")
+    pbar = None
 
     try:
         s = tiled_scale(
