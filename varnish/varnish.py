@@ -417,7 +417,16 @@ class VarnishResult:
         filename: Optional[str] = None,
         format: str = "mp4",
         codec: str = "h264",
-        quality: int = 23,
+
+        # The range of the CRF scale is 0–51, where:
+        # 0 is lossless (for 8 bit only, for 10 bit use -qp 0)
+        # 23 is the default
+        # 51 is worst quality possible
+        # A lower value generally leads to higher quality, and a subjectively sane range is 17–28.
+        # Consider 17 or 18 to be visually lossless or nearly so;
+        # it should look the same or nearly the same as the input but it isn't technically lossless.
+        # The range is exponential, so increasing the CRF value +6 results in roughly half the bitrate / file size, while -6 leads to roughly twice the bitrate.
+        quality: int = 18,
         bitrate: Optional[str] = None,
     ) -> Union[str, bytes, bool]:
         """Write processed video to specified format using PyAV"""
