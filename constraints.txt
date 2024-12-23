@@ -1,1 +1,1 @@
-diffusers @ git+https://github.com/huggingface/diffusers.git@main
+diffusers @ git+https://github.com/huggingface/diffusers.git@ltxv-0.9.1-integration

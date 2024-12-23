@@ -20,7 +20,7 @@ safetensors>=0.4.5
 spandrel>=0.4.0
 transformers>=4.46.1
 sentencepiece>=0.2.0
-diffusers @ git+https://github.com/huggingface/diffusers.git@main
+diffusers @ git+https://github.com/huggingface/diffusers.git@ltxv-0.9.1-integration
 mmaudio @ git+https://github.com/hkchengrex/MMAudio.git@45f44e067c6451d5e646b494bc962724882c003c
 huggingface_hub>=0.26
 
