@@ -43,7 +43,13 @@ dependencies = [
     'spandrel>=0.4.0',
     'transformers>=4.44.0',
     'sentencepiece>=0.2.0',
+
+    # special version of Diffusers that supports Enhance-A-Video
+    'diffusers @ git+https://github.com/huggingface/diffusers.git@cb06c4736a642c6645f8f475a6b23fc5087b7bd6',
+
+    # main branch (not used for now, we need to wait for Enhance-A-Video to be merged)
     'diffusers @ git+https://github.com/huggingface/diffusers.git@main',
+    
     'mmaudio @ git+https://github.com/hkchengrex/MMAudio.git@45f44e067c6451d5e646b494bc962724882c003c',
     'huggingface_hub>=0.26',
     'librosa>=0.8.1',
