@@ -15,6 +15,12 @@ from spandrel import ModelLoader
 
 logger = logging.getLogger(__file__)
 
+def is_truthy(val):
+    """Check if a value is truthy"""
+    if not val:
+        return False
+    return str(val).lower() in ('true', '1', 't', 'y', 'yes')
+
 def print_directory_structure(startpath):
     """Print the directory structure starting from the given path."""
     logger.info(f'💡 Printing directory structure of "{startpath}":')
