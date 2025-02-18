@@ -55,7 +55,7 @@ dependencies = [
     'tensordict>=0.6.1',
     'requests>=2.31.0',
     'colorlog>=6.7.0',
-    'spaces>=0.29.3',
+    'spaces>=0.32.0',
     'torchdiffeq>=0.2.5',
     'nitrous-ema',
     'open_clip_torch>=2.29.0',
