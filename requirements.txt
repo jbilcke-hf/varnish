@@ -36,7 +36,7 @@ tensorboard>=2.11
 tensordict>=0.6.1
 requests>=2.31.0
 colorlog>=6.7.0
-spaces>=0.29.3
+spaces>=0.32.0
 
 # MMAudio specific
 torchdiffeq>=0.2.5
