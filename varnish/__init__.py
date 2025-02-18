@@ -8,6 +8,11 @@ from .varnish import (
     VarnishResult,
     Varnish
 )
+from .utils import (
+    is_truthy,
+    print_directory_structure,
+    process_input_image
+)
 
 # Importing with `from varnish import *` will only import these names
 __all__ = [
@@ -19,5 +24,8 @@ __all__ = [
     "ProcessingProgress",
     "VideoProcessor",
     "VarnishResult",
-    "Varnish"
+    "Varnish",
+    "is_truthy",
+    "print_directory_structure",
+    "process_input_image"
 ]
