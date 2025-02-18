@@ -2,10 +2,12 @@ import math
 from typing import Union, List
 import torch
 import os
+import io
+import base64
 from datetime import datetime
 import numpy as np
 import itertools
-import PIL.Image
+from PIL import Image
 import safetensors.torch
 import tqdm
 import logging
@@ -13,6 +15,89 @@ from spandrel import ModelLoader
 
 logger = logging.getLogger(__file__)
 
+def print_directory_structure(startpath):
+    """Print the directory structure starting from the given path."""
+    logger.info(f'💡 Printing directory structure of "{startpath}":')
+    for root, dirs, files in os.walk(startpath):
+        level = root.replace(startpath, '').count(os.sep)
+        indent = ' ' * 4 * level
+        logger.info(f"{indent}{os.path.basename(root)}/")
+        subindent = ' ' * 4 * (level + 1)
+        for f in files:
+            logger.info(f"{subindent}{f}")
+
+def process_input_image(image_data: str, target_width: int, target_height: int, input_image_quality: int) -> Image.Image:
+    """
+    Process input image from base64, resize and crop to target dimensions
+    
+    Args:
+        image_data: Base64 encoded image data
+        target_width: Desired width
+        target_height: Desired height
+        fake_video_input: bool
+        
+    Returns:
+        Processed PIL Image
+    """
+    try:
+        # Handle data URI format
+        if image_data.startswith('data:'):
+            image_data = image_data.split(',', 1)[1]
+            
+        # Decode base64
+        image_bytes = base64.b64decode(image_data)
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert to RGB if necessary
+        if image.mode not in ('RGB', 'RGBA'):
+            image = image.convert('RGB')
+        elif image.mode == 'RGBA':
+            # Handle transparency by compositing on white background
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[3])
+            image = background
+            
+        # Calculate target aspect ratio
+        target_aspect = target_width / target_height
+        
+        # Get current dimensions
+        orig_width, orig_height = image.size
+        orig_aspect = orig_width / orig_height
+        
+        # Calculate dimensions for resizing
+        if orig_aspect > target_aspect:
+            # Image is wider than target
+            new_height = target_height
+            new_width = int(target_height * orig_aspect)
+        else:
+            # Image is taller than target
+            new_width = target_width
+            new_height = int(target_width / orig_aspect)
+            
+        # Resize image
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Center crop to target dimensions
+        left = (new_width - target_width) // 2
+        top = (new_height - target_height) // 2
+        right = left + target_width
+        bottom = top + target_height
+        
+        image = image.crop((left, top, right, bottom))
+
+        # Apply JPEG compression if input_image_quality is not 100
+        if input_image_quality < 100:
+            # Save with compression to bytes buffer
+            buffer = io.BytesIO()
+            image.save(buffer, format='JPEG', quality=input_image_quality)
+            buffer.seek(0)
+            # Load compressed image back
+            image = Image.open(buffer)
+        
+        return image
+        
+    except Exception as e:
+        raise ValueError(f"Failed to process input image: {str(e)}")
 
 def load_torch_file(ckpt, device=None, dtype=torch.float16):
     if device is None:
