@@ -21,8 +21,8 @@ spandrel>=0.4.0
 transformers>=4.46.1
 sentencepiece>=0.2.0
 
-# special version of Diffusers that supports Enhance-A-Video
-diffusers @ git+https://github.com/huggingface/diffusers.git@cb06c4736a642c6645f8f475a6b23fc5087b7bd6
+# temporary dependency to use Diffusers with FasterCache (for HunyuanVideo) and Enhance-A-Video (for LTX / HunyuanVideo)
+diffusers @ git+https://github.com/jbilcke-hf/diffusers-tmp-fork.git@unstable-branches
 
 # main branch (not used for now, we need to wait for Enhance-A-Video to be merged)
 # diffusers @ git+https://github.com/huggingface/diffusers.git@main
