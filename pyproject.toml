@@ -41,20 +41,16 @@ dependencies = [
     'accelerate>=0.34.2',
     'safetensors>=0.4.5',
     'spandrel>=0.4.0',
-    'transformers>=4.44.0',
+    'transformers>=4.48.0',
     'sentencepiece>=0.2.0',
     
-    # temporary dependency to use Diffusers with FasterCache (for HunyuanVideo) and Enhance-A-Video (for LTX / HunyuanVideo)
-    'diffusers @ git+https://github.com/jbilcke-hf/diffusers-tmp-fork.git@unstable-branches',
-
-    # main branch (not used for now, we need to wait for Enhance-A-Video to be merged)
-    #'diffusers @ git+https://github.com/huggingface/diffusers.git@main',
+    'diffusers @ git+https://github.com/huggingface/diffusers.git@main',
     
     'mmaudio @ git+https://github.com/hkchengrex/MMAudio.git@45f44e067c6451d5e646b494bc962724882c003c',
-    'huggingface_hub>=0.26',
+    'huggingface_hub',
     'librosa>=0.8.1',
     'tqdm>=4.66.5',
-    'einops>=0.6',
+    'einops>=0.7.0',
     'hydra-core>=1.3.2',
     'hydra_colorlog',
     'tensorboard>=2.11',
